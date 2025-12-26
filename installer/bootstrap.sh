@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_SLUG="WLCB-LP/wlcb-mixer"
+REPO_SLUG="WLCB-LP/WLCB-Mixer"
 BRANCH="stable"
 APP_DIR="/opt/wlcb-mixer"
 

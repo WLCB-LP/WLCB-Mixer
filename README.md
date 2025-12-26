@@ -4,10 +4,10 @@ Web-based mixer control surface (custom UI) intended to control Symetrix Radius 
 
 ## One-line install (public repo)
 
-Repo is hosted at `WLCB-LP/wlcb-mixer`:
+Repo is hosted at `WLCB-LP/WLCB-Mixer`:
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/WLCB-LP/wlcb-mixer/stable/installer/bootstrap.sh)
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/WLCB-LP/WLCB-Mixer/stable/installer/bootstrap.sh)
 ```
 
 ## Logs
