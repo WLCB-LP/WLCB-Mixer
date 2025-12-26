@@ -1,16 +1,69 @@
+# =============================================================================
+# WLCB-Mixer — systemd unit file
+# =============================================================================
+#
+# This unit runs the WLCB-Mixer Node.js server as a long-lived background service.
+#
+# WHY systemd?
+# ------------
+# - It starts WLCB-Mixer automatically at boot.
+# - It restarts the service if it crashes.
+# - It centralizes logs in journald (view with journalctl).
+# - It's the standard service manager on Debian 12.
+#
+# SAFETY / OPERATIONS PRINCIPLES
+# ------------------------------
+# - Run as a non-root user ("wlcb") to reduce risk if the app misbehaves.
+# - Prefer an unprivileged port (8080) to avoid needing root capabilities.
+# - Keep configuration in /etc so upgrades to /opt don't overwrite your local settings.
+#
+# FILE LOCATIONS (convention)
+# ---------------------------
+# - Application runtime: /opt/wlcb-mixer
+# - Configuration:       /etc/wlcb-mixer/config.env
+# - Runtime state:       /var/lib/wlcb-mixer
+# =============================================================================
+
 [Unit]
 Description=WLCB-Mixer Control Server
 After=network.target
 
+# If you later add network-online.target requirements (DHCP etc.),
+# you can change to:
+#   After=network-online.target
+#   Wants=network-online.target
+
 [Service]
+# Run as a dedicated, non-root user for safety.
 User=wlcb
 Group=wlcb
+
+# systemd will run ExecStart from this directory.
+# WHY: our server serves static UI from ./public, so relative paths matter.
 WorkingDirectory=/opt/wlcb-mixer/server
+
+# Start the compiled server entrypoint.
+# WHY: we compile TypeScript -> dist for predictable runtime behavior.
 ExecStart=/usr/bin/node dist/index.js
+
+# Restart policy:
+# - "always" means systemd will restart even if the process exits cleanly.
+# - This is appropriate for an appliance-like service that should always be up.
 Restart=always
 RestartSec=5
+
+# Environment:
+# - NODE_ENV is used by many Node libs to enable production behavior.
 Environment=NODE_ENV=production
+# Load station-specific config without baking it into the repo.
+# The leading '-' means "don't fail if missing" (installer creates it on first run).
 EnvironmentFile=-/etc/wlcb-mixer/config.env
+
+# Optional hardening ideas (can be enabled later after testing):
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=full
+# ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target
