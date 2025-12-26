@@ -37,3 +37,7 @@ Configuration lives in `/etc/wlcb-mixer/config.env`.
 Runtime state lives in `/var/lib/wlcb-mixer`.
 
 This keeps OS, app, config, and state separated in standard Linux locations.
+
+## UI navigation
+
+The UI starts on a landing page where an operator selects Studio A, Studio B, or Engineering. Navigation is currently implemented with a simple hash router (no extra dependencies).

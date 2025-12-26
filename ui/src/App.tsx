@@ -1,27 +1,85 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+/**
+ * WLCB-Mixer — UI App Shell
+ * =============================================================================
+ *
+ * GOAL (this milestone)
+ * ---------------------
+ * Add a simple landing page that lets operators choose:
+ *   - Studio A
+ *   - Studio B
+ *   - Engineering
+ *
+ * WHY NOT React Router (yet)?
+ * ---------------------------
+ * We *could* add react-router, but early on it's helpful to keep dependencies
+ * minimal. A simple hash-based router is:
+ *   - zero extra dependencies,
+ *   - works on a static-file hosted SPA,
+ *   - easy to understand for learning and future maintenance.
+ */
 
-type Strip = { id: string; label: string; level: number; on: boolean };
+import React, { useEffect, useRef, useState } from "react";
 
-function clamp(v: number, a: number, b: number) { return Math.max(a, Math.min(b, v)); }
+type Route = "landing" | "studio-a" | "studio-b" | "engineering";
+
+type Strip = {
+  id: string;
+  label: string;
+  level: number; // 0..1 (placeholder scale for now)
+  on: boolean;
+};
+
+function clamp(v: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, v));
+}
+
+/**
+ * Hash-based routing helpers
+ * =============================================================================
+ * We use URLs like:
+ *   http://host:8080/#/studio-a
+ *
+ * This avoids server-side routing complexity and works with static hosting.
+ */
+function parseRouteFromHash(): Route {
+  const h = (window.location.hash || "").toLowerCase();
+
+  if (h.startsWith("#/studio-a")) return "studio-a";
+  if (h.startsWith("#/studio-b")) return "studio-b";
+  if (h.startsWith("#/engineering")) return "engineering";
+  return "landing";
+}
+
+function navigate(route: Route) {
+  const target = route === "landing" ? "#/" : `#/${route}`;
+  window.location.hash = target;
+}
 
 export default function App() {
-  const [connected, setConnected] = useState(false);
-  const [strips, setStrips] = useState<Strip[]>([
-    { id: "mic1", label: "MIC 1", level: 0.6, on: true },
-    { id: "mic2", label: "MIC 2", level: 0.4, on: false },
-    { id: "cd1", label: "CD 1", level: 0.2, on: true },
-    { id: "pc", label: "PC", level: 0.5, on: true },
-  ]);
+  const [route, setRoute] = useState<Route>(() => parseRouteFromHash());
 
+  useEffect(() => {
+    const onHashChange = () => setRoute(parseRouteFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // WebSocket (shared across pages)
+  const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const ws = new WebSocket(`${location.origin.replace("http", "ws")}/ws`);
     wsRef.current = ws;
+
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     ws.onerror = () => setConnected(false);
-    ws.onmessage = () => { /* placeholder */ };
+
+    ws.onmessage = () => {
+      // TODO: handle state/meter messages
+    };
+
     return () => ws.close();
   }, []);
 
@@ -32,46 +90,278 @@ export default function App() {
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", background: "#101216", color: "#eaeef5", minHeight: "100vh" }}>
-      <header style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>WLCB-Mixer</div>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>Prototype UI • WS: {connected ? "Connected" : "Disconnected"}</div>
-        </div>
-        <div style={{ fontSize: 12, opacity: 0.75 }}>Landing + Studio pages coming next</div>
-      </header>
+    <div
+      style={{
+        fontFamily: "system-ui, sans-serif",
+        background: "#101216",
+        color: "#eaeef5",
+        minHeight: "100vh",
+      }}
+    >
+      <Header connected={connected} route={route} onHome={() => navigate("landing")} />
 
       <main style={{ padding: 20 }}>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {strips.map((s) => (
-            <ChannelStrip
-              key={s.id}
-              strip={s}
-              onChange={(next) => {
-                setStrips((prev) => prev.map((p) => (p.id === s.id ? next : p)));
-                sendControl(s.id, { value: next.level, on: next.on });
-              }}
-            />
-          ))}
-        </div>
+        {route === "landing" && (
+          <LandingPage
+            onSelectStudioA={() => navigate("studio-a")}
+            onSelectStudioB={() => navigate("studio-b")}
+            onSelectEngineering={() => navigate("engineering")}
+          />
+        )}
+
+        {route === "studio-a" && (
+          <StudioPage
+            title="Studio A"
+            strips={[
+              { id: "mic1", label: "MIC 1", level: 0.6, on: true },
+              { id: "mic2", label: "MIC 2", level: 0.4, on: false },
+              { id: "cd1", label: "CD 1 (L/R)", level: 0.2, on: true },
+              { id: "pc", label: "PC (L/R)", level: 0.5, on: true },
+            ]}
+            onControl={sendControl}
+          />
+        )}
+
+        {route === "studio-b" && (
+          <StudioPage
+            title="Studio B"
+            strips={[
+              { id: "mic1", label: "MIC 1", level: 0.6, on: true },
+              { id: "mic2", label: "MIC 2", level: 0.4, on: false },
+              { id: "turn1", label: "TT 1 (L/R)", level: 0.3, on: true },
+              { id: "turn2", label: "TT 2 (L/R)", level: 0.3, on: true },
+            ]}
+            onControl={sendControl}
+          />
+        )}
+
+        {route === "engineering" && <EngineeringPage />}
       </main>
     </div>
   );
 }
 
-function ChannelStrip({ strip, onChange }: { strip: Strip; onChange: (s: Strip) => void }) {
+function Header({
+  connected,
+  route,
+  onHome,
+}: {
+  connected: boolean;
+  route: Route;
+  onHome: () => void;
+}) {
+  const subtitle =
+    route === "landing"
+      ? "Select a room"
+      : route === "engineering"
+      ? "Engineering"
+      : route === "studio-a"
+      ? "Studio A"
+      : "Studio B";
+
+  return (
+    <header
+      style={{
+        padding: "16px 20px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>WLCB-Mixer</div>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
+          {subtitle} • WS: {connected ? "Connected" : "Disconnected"}
+        </div>
+      </div>
+
+      <button
+        onClick={onHome}
+        style={{
+          border: "none",
+          borderRadius: 10,
+          padding: "10px 12px",
+          background: "#303747",
+          color: "#eaeef5",
+          fontWeight: 700,
+          cursor: "pointer",
+        }}
+        title="Return to landing page"
+      >
+        Home
+      </button>
+    </header>
+  );
+}
+
+function LandingPage({
+  onSelectStudioA,
+  onSelectStudioB,
+  onSelectEngineering,
+}: {
+  onSelectStudioA: () => void;
+  onSelectStudioB: () => void;
+  onSelectEngineering: () => void;
+}) {
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      <h2 style={{ margin: "10px 0 6px" }}>Choose a room</h2>
+      <div style={{ opacity: 0.75, marginBottom: 16 }}>
+        This is the operator entry point. Each room has its own mixer layout.
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: 14,
+        }}
+      >
+        <RoomCard title="Studio A" description="Primary studio mixer surface" onClick={onSelectStudioA} />
+        <RoomCard title="Studio B" description="Secondary studio mixer surface" onClick={onSelectStudioB} />
+        <RoomCard title="Engineering" description="Meters, routing status, diagnostics (restricted)" onClick={onSelectEngineering} />
+      </div>
+    </div>
+  );
+}
+
+function RoomCard({
+  title,
+  description,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        textAlign: "left",
+        border: "none",
+        borderRadius: 14,
+        padding: 16,
+        background: "#171a20",
+        color: "#eaeef5",
+        cursor: "pointer",
+        boxShadow: "0 10px 20px rgba(0,0,0,.25)",
+      }}
+    >
+      <div style={{ fontSize: 16, fontWeight: 800 }}>{title}</div>
+      <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>{description}</div>
+      <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>Open →</div>
+    </button>
+  );
+}
+
+function StudioPage({
+  title,
+  strips: initialStrips,
+  onControl,
+}: {
+  title: string;
+  strips: Strip[];
+  onControl: (id: string, payload: any) => void;
+}) {
+  const [strips, setStrips] = useState<Strip[]>(initialStrips);
+
+  return (
+    <div>
+      <h2 style={{ margin: "10px 0 12px" }}>{title}</h2>
+
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        {strips.map((s) => (
+          <ChannelStrip
+            key={s.id}
+            strip={s}
+            onChange={(next) => {
+              setStrips((prev) => prev.map((p) => (p.id === s.id ? next : p)));
+              onControl(s.id, { value: next.level, on: next.on });
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EngineeringPage() {
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      <h2 style={{ margin: "10px 0 6px" }}>Engineering</h2>
+      <div style={{ opacity: 0.75, marginBottom: 16 }}>Diagnostics and monitoring will live here.</div>
+
+      <div
+        style={{
+          borderRadius: 14,
+          background: "#171a20",
+          padding: 16,
+          boxShadow: "0 10px 20px rgba(0,0,0,.25)",
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Coming soon</div>
+        <ul style={{ margin: 0, paddingLeft: 18, opacity: 0.8 }}>
+          <li>DSP connectivity status</li>
+          <li>Meter overview / confidence monitoring</li>
+          <li>Routing snapshots and presets</li>
+          <li>Operator lockouts / permissions</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function ChannelStrip({
+  strip,
+  onChange,
+}: {
+  strip: Strip;
+  onChange: (s: Strip) => void;
+}) {
   const [dragging, setDragging] = useState(false);
 
   return (
-    <div style={{ width: 140, borderRadius: 14, background: "#171a20", padding: 12, boxShadow: "0 10px 20px rgba(0,0,0,.25)" }}>
-      <div style={{ height: 90, borderRadius: 10, background: "#0f1116", padding: 10, display: "flex", alignItems: "flex-end" }}>
-        <div style={{ width: 16, height: "100%", borderRadius: 8, background: "#1f2430", overflow: "hidden" }}>
-          <div style={{ width: "100%", height: `${Math.round(strip.level * 100)}%`, background: strip.level > 0.85 ? "#ff4d4d" : "#35d07f" }} />
+    <div
+      style={{
+        width: 160,
+        borderRadius: 14,
+        background: "#171a20",
+        padding: 12,
+        boxShadow: "0 10px 20px rgba(0,0,0,.25)",
+      }}
+    >
+      <div
+        style={{
+          height: 90,
+          borderRadius: 10,
+          background: "#0f1116",
+          padding: 10,
+          display: "flex",
+          alignItems: "flex-end",
+        }}
+      >
+        <div
+          style={{
+            width: 16,
+            height: "100%",
+            borderRadius: 8,
+            background: "#1f2430",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: `${Math.round(strip.level * 100)}%`,
+              background: strip.level > 0.85 ? "#ff4d4d" : "#35d07f",
+            }}
+          />
         </div>
         <div style={{ marginLeft: 10, fontSize: 12, opacity: 0.8 }}>Meter</div>
       </div>
 
-      <div style={{ marginTop: 10, fontWeight: 700 }}>{strip.label}</div>
+      <div style={{ marginTop: 10, fontWeight: 800 }}>{strip.label}</div>
 
       <button
         onClick={() => onChange({ ...strip, on: !strip.on })}
@@ -83,7 +373,7 @@ function ChannelStrip({ strip, onChange }: { strip: Strip; onChange: (s: Strip) 
           padding: "10px 12px",
           background: strip.on ? "#35d07f" : "#303747",
           color: strip.on ? "#0b1a10" : "#eaeef5",
-          fontWeight: 800,
+          fontWeight: 900,
           letterSpacing: 0.5,
           cursor: "pointer",
         }}
@@ -106,7 +396,9 @@ function ChannelStrip({ strip, onChange }: { strip: Strip; onChange: (s: Strip) 
           style={{ width: "100%" }}
         />
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, opacity: 0.7 }}>
-          <span>0</span><span>{(strip.level * 100).toFixed(0)}</span><span>100</span>
+          <span>0</span>
+          <span>{(strip.level * 100).toFixed(0)}</span>
+          <span>100</span>
         </div>
       </div>
 
