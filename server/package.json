@@ -1,0 +1,20 @@
+{
+  "name": "wlcb-mixer-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-ui.mjs",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.30",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.5.4"
+  }
+}

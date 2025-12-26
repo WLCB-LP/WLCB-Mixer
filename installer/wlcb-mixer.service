@@ -1,0 +1,16 @@
+[Unit]
+Description=WLCB-Mixer Control Server
+After=network.target
+
+[Service]
+User=wlcb
+Group=wlcb
+WorkingDirectory=/opt/wlcb-mixer/server
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/wlcb-mixer/config.env
+
+[Install]
+WantedBy=multi-user.target
