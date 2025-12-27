@@ -104,14 +104,12 @@ chown "${USER_NAME}:${USER_NAME}" "${RELEASE_DIR}/.release_id"
 echo "[7/9] Build (if enabled)..."
 if [[ "${NO_BUILD}" -eq 0 ]]; then
   # ---------------------------------------------------------------------------
-  # BUILD STEP (server + UI) — and make the UI available to the server.
+  # BUILD STEP (server + UI) — and publish UI to server/public
   #
-  # Why the extra copy step?
-  # - The Node server serves the UI from: server/public
-  # - The React build outputs to:        ui/dist
-  # - Therefore every release must copy ui/dist -> server/public
-  #
-  # We do this inside the release directory so each release is self-contained.
+  # Why this exists:
+  # - UI build output:        ui/dist
+  # - Server static directory: server/public
+  # - Each atomic release must include server/public so the server can serve UI.
   # ---------------------------------------------------------------------------
   sudo -u "${USER_NAME}" bash -lc "
     set -e
@@ -135,7 +133,6 @@ if [[ "${NO_BUILD}" -eq 0 ]]; then
     mkdir -p ${RELEASE_DIR}/server/public
     rsync -a --delete ${RELEASE_DIR}/ui/dist/ ${RELEASE_DIR}/server/public/
 
-    # Safety check: confirm we have an index.html to serve.
     if [ ! -f ${RELEASE_DIR}/server/public/index.html ]; then
       echo 'ERROR: server/public/index.html missing after publish step.'
       exit 3
@@ -145,7 +142,7 @@ else
   echo "Skipping build (--no-build)."
 fi
 
-echo "[8/9] Activate release (atomic symlink flip)..."
+echo "[8/9] Activate release (atomic symlink flip)..." echo "[8/9] Activate release (atomic symlink flip)..."
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
 chown -h "${USER_NAME}:${USER_NAME}" "${CURRENT_LINK}" || true
 
@@ -178,5 +175,3 @@ echo "✅ Installed. Active release: ${RELEASE_ID}"
 echo "URL:    http://<this-vm-lan-ip>:8080/#/"
 echo "Logs:   journalctl -u wlcb-mixer -f"
 echo "Update: systemctl status wlcb-mixer-update.timer"
-
-# (v0.2.2) UI publish is now enforced every build: ui/dist -> server/public

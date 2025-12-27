@@ -2,24 +2,24 @@
  * WLCB-Mixer — Server Gateway
  * =============================================================================
  *
- * v0.2.1 milestone:
- *  - Add GET /api/status for the Engineering page
- *  - Report release id, uptime, WS client count, activity timestamps
+ * v0.2.3 milestone:
+ *  - DSP targets config + reachability probing (NO control yet)
+ *  - Expose probe results on GET /api/status (Engineering)
  */
 
 import express from "express";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
+import net from "node:net";
+import { execFile } from "node:child_process";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT || 8080);
 
-// Written by server when operators move controls (NOT meters)
 const ACTIVITY_FILE =
   process.env.ACTIVITY_FILE || "/var/lib/wlcb-mixer/last_activity_epoch";
 
-// Written by updater timer/script (root) so Engineering can see update behavior
 const UPDATE_LAST_CHECK_FILE =
   process.env.UPDATE_LAST_CHECK_FILE ||
   "/var/lib/wlcb-mixer/update_last_check_epoch";
@@ -27,9 +27,31 @@ const UPDATE_LAST_DEPLOY_FILE =
   process.env.UPDATE_LAST_DEPLOY_FILE ||
   "/var/lib/wlcb-mixer/update_last_deploy_epoch";
 
+type DspTarget = { id: string; name: string; ip: string; disabled?: boolean };
+
+function loadDspTargets(): DspTarget[] {
+  const raw = process.env.DSP_TARGETS_JSON;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((x: any) => ({
+        id: String(x?.id ?? ""),
+        name: String(x?.name ?? ""),
+        ip: String(x?.ip ?? ""),
+        disabled: Boolean(x?.disabled ?? false),
+      }))
+      .filter((t) => t.id && t.name && t.ip);
+  } catch {
+    return [];
+  }
+}
+
+const DSP_PROBE_PORT = Number(process.env.DSP_PROBE_PORT || 80);
+
 function readReleaseId(): string | null {
   try {
-    // WorkingDirectory is /opt/wlcb-mixer/current/server
     const p = path.resolve(process.cwd(), "..", ".release_id");
     if (!fs.existsSync(p)) return null;
     return fs.readFileSync(p, "utf8").trim() || null;
@@ -52,25 +74,133 @@ function readEpochFile(filePath: string): number | null {
 function markOperatorActivity(): void {
   try {
     fs.mkdirSync(path.dirname(ACTIVITY_FILE), { recursive: true });
-    fs.writeFileSync(ACTIVITY_FILE, String(Math.floor(Date.now() / 1000)), "utf8");
-  } catch {
-    // Non-fatal by design
+    fs.writeFileSync(
+      ACTIVITY_FILE,
+      String(Math.floor(Date.now() / 1000)),
+      "utf8"
+    );
+  } catch {}
+}
+
+type DspProbe = {
+  id: string;
+  name: string;
+  ip: string;
+  disabled?: boolean;
+  ok: boolean | null;
+  method?: "tcp" | "ping";
+  rttMs?: number;
+  lastCheckEpoch?: number;
+  error?: string;
+};
+
+const dspStatus: Record<string, DspProbe> = {};
+
+function ensureTargets() {
+  for (const t of loadDspTargets()) {
+    if (!dspStatus[t.id]) {
+      dspStatus[t.id] = {
+        id: t.id,
+        name: t.name,
+        ip: t.ip,
+        disabled: t.disabled,
+        ok: null,
+      };
+    } else {
+      dspStatus[t.id].name = t.name;
+      dspStatus[t.id].ip = t.ip;
+      dspStatus[t.id].disabled = t.disabled;
+    }
   }
 }
+
+function tcpProbe(ip: string, port: number, timeoutMs: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const sock = new net.Socket();
+
+    const finish = (err?: Error) => {
+      sock.removeAllListeners();
+      try {
+        sock.destroy();
+      } catch {}
+      if (err) reject(err);
+      else resolve(Date.now() - started);
+    };
+
+    sock.setTimeout(timeoutMs);
+    sock.once("connect", () => finish());
+    sock.once("timeout", () => finish(new Error("tcp timeout")));
+    sock.once("error", (e) => finish(e as Error));
+    sock.connect(port, ip);
+  });
+}
+
+function pingProbe(ip: string, timeoutSec: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    execFile("/bin/ping", ["-c", "1", "-W", String(timeoutSec), ip], (err) => {
+      if (err) return reject(err);
+      resolve(Date.now() - started);
+    });
+  });
+}
+
+async function probeOne(t: DspTarget): Promise<void> {
+  const slot = dspStatus[t.id];
+  slot.lastCheckEpoch = Math.floor(Date.now() / 1000);
+
+  if (t.disabled) {
+    slot.ok = null;
+    slot.error = "disabled";
+    slot.method = undefined;
+    slot.rttMs = undefined;
+    return;
+  }
+
+  try {
+    const rtt = await tcpProbe(t.ip, DSP_PROBE_PORT, 800);
+    slot.ok = true;
+    slot.method = "tcp";
+    slot.rttMs = rtt;
+    slot.error = undefined;
+    return;
+  } catch (e: any) {
+    slot.ok = false;
+    slot.method = "tcp";
+    slot.rttMs = undefined;
+    slot.error = String(e?.message || e);
+  }
+
+  try {
+    const rtt = await pingProbe(t.ip, 1);
+    slot.ok = true;
+    slot.method = "ping";
+    slot.rttMs = rtt;
+    slot.error = undefined;
+  } catch {
+    // keep tcp failure info
+  }
+}
+
+async function probeAll(): Promise<void> {
+  ensureTargets();
+  for (const t of loadDspTargets()) {
+    await probeOne(t);
+  }
+}
+
+setInterval(() => {
+  probeAll().catch(() => {});
+}, 5000);
+probeAll().catch(() => {});
 
 const app = express();
 const server = http.createServer(app);
 const bootTimeMs = Date.now();
 
-/**
- * WebSocket server
- * (declared before /api/status uses it so TypeScript knows it's defined)
- */
 const wss = new WebSocketServer({ server, path: "/ws" });
 
-/**
- * Engineering status endpoint
- */
 app.get("/api/status", (_req, res) => {
   res.json({
     app: "WLCB-Mixer",
@@ -84,12 +214,13 @@ app.get("/api/status", (_req, res) => {
       lastCheckEpoch: readEpochFile(UPDATE_LAST_CHECK_FILE),
       lastDeployEpoch: readEpochFile(UPDATE_LAST_DEPLOY_FILE),
     },
+    dsp: {
+      probePort: DSP_PROBE_PORT,
+      targets: Object.values(dspStatus),
+    },
   });
 });
 
-/**
- * Serve UI
- */
 const publicDir = path.resolve("./public");
 if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
@@ -102,7 +233,6 @@ if (fs.existsSync(publicDir)) {
 
 wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "hello", app: "WLCB-Mixer", ts: Date.now() }));
-
   ws.on("message", (data) => {
     try {
       const msg = JSON.parse(String(data));
@@ -110,9 +240,7 @@ wss.on("connection", (ws) => {
         markOperatorActivity();
         ws.send(JSON.stringify({ type: "ack", id: msg.id ?? null }));
       }
-    } catch {
-      // ignore malformed messages
-    }
+    } catch {}
   });
 });
 

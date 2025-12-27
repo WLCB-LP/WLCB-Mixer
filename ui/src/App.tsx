@@ -407,8 +407,97 @@ function EngineeringPage() {
           />
         </div>
 
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>DSP Targets (reachability)</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+            Phase 0: network reachability only (no control yet). Probe port:{" "}
+            <span style={{ fontWeight: 900 }}>{status?.dsp?.probePort ?? "—"}</span>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", opacity: 0.8 }}>
+                  <th style={{ padding: "8px 6px" }}>Device</th>
+                  <th style={{ padding: "8px 6px" }}>IP</th>
+                  <th style={{ padding: "8px 6px" }}>Status</th>
+                  <th style={{ padding: "8px 6px" }}>Method</th>
+                  <th style={{ padding: "8px 6px" }}>RTT</th>
+                  <th style={{ padding: "8px 6px" }}>Last Check</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(status?.dsp?.targets || []).map((t: any) => {
+                  const disabled = !!t.disabled;
+                  const ok = t.ok;
+                  const statusText = disabled
+                    ? "Disabled"
+                    : ok === true
+                    ? "Online"
+                    : ok === false
+                    ? "Offline"
+                    : "Unknown";
+
+                  const pillBg = disabled
+                    ? "#303747"
+                    : ok === true
+                    ? "#35d07f"
+                    : ok === false
+                    ? "#ff4d4d"
+                    : "#303747";
+
+                  const pillFg = disabled ? "#eaeef5" : ok === true ? "#0b1a10" : "#fff";
+
+                  return (
+                    <tr key={t.id} style={{ borderTop: "1px solid rgba(255,255,255,.06)" }}>
+                      <td style={{ padding: "10px 6px", fontWeight: 800 }}>{t.name}</td>
+                      <td
+                        style={{
+                          padding: "10px 6px",
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          fontSize: 12,
+                          opacity: 0.9,
+                        }}
+                      >
+                        {t.ip}
+                      </td>
+                      <td style={{ padding: "10px 6px" }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            background: pillBg,
+                            color: pillFg,
+                            fontWeight: 900,
+                            fontSize: 12,
+                          }}
+                        >
+                          {statusText}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 6px", opacity: 0.85 }}>{t.method || "—"}</td>
+                      <td style={{ padding: "10px 6px", opacity: 0.85 }}>
+                        {t.rttMs ? `${t.rttMs} ms` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 6px", opacity: 0.75 }}>
+                        {t.lastCheckEpoch ? fmtAge(t.lastCheckEpoch) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.65 }}>
+            Tip: if your Radius devices don&apos;t expose HTTP on port 80, set <code>DSP_PROBE_PORT</code> in
+            <code> /etc/wlcb-mixer/config.env</code>.
+          </div>
+        </div>
+
         <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-          Next: add DSP connectivity and a meter overview.
+          Next: add real Symetrix control + meters.
         </div>
       </div>
     </div>

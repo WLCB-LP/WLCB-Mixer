@@ -81,7 +81,3 @@ Later, WLCB-Mixer can add a safe auto-update mechanism gated by operator inactiv
 ## Engineering visibility
 
 The auto-update script writes timestamps into `/var/lib/wlcb-mixer/update_last_check_epoch` and `/var/lib/wlcb-mixer/update_last_deploy_epoch` so the Engineering page can show update activity.
-
-## UI build publishing
-
-The UI build outputs to `ui/dist`. During installation, WLCB-Mixer copies (`rsync`) `ui/dist/` into `server/public/` inside the same release directory so the Node server can serve the UI.

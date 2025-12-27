@@ -45,3 +45,7 @@ The UI starts on a landing page where an operator selects Studio A, Studio B, or
 ## Engineering status
 
 The Engineering page polls `GET /api/status` to display release id, uptime, WebSocket client count, and update-check/deploy timestamps.
+
+## DSP targets (Phase 0)
+
+Configure DSP devices in `/etc/wlcb-mixer/config.env` using `DSP_TARGETS_JSON`. The server performs lightweight reachability probes (TCP connect to `DSP_PROBE_PORT`, optional ping) and exposes results via `/api/status`.
