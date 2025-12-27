@@ -236,6 +236,217 @@ function StudioPlaceholderPage({ title }: { title: string }) {
   );
 }
 
+
+function StudioBPage() {
+  /**
+   * =============================================================================
+   * Studio B — Broadcast-style mixer shell (Phase 1)
+   * =============================================================================
+   * This page is intentionally "read-only" for now:
+   *   - Faders and mutes are rendered, but disabled.
+   *   - Meters update live once Composer controller numbers are assigned and
+   *     DSP_METER_MAP_JSON is configured for targetId "b1".
+   *
+   * WHY build the UI before enabling control writes?
+   * ----------------------------------------------
+   * In broadcast, the *layout* and operator muscle memory matter. Building the UI
+   * first lets you validate ergonomics, labeling, meter ballistics, and screen
+   * density while keeping the DSP safe.
+   * =============================================================================
+   */
+
+  const { status, error } = useStatusPoll();
+
+  // Studio B DSP target id (from DSP_TARGETS_JSON):
+  //   {"id":"b1","name":"Radius 12x8 #3 (Studio B)","ip":"10.101.2.2"}
+  const [metersB1, setMetersB1] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    const t = window.setInterval(async () => {
+      try {
+        const r = await fetch("/api/meters/b1");
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!alive) return;
+        setMetersB1(j);
+      } catch {
+        // keep rendering
+      }
+    }, 250);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  // Studio B channel plan (your current spec)
+  const channels: Array<{
+    id: string;
+    label: string;
+    kind: "mic" | "stereo" | "monitor";
+    meterId?: string;
+  }> = [
+    { id: "mic1", label: "Mic 1", kind: "mic", meterId: "mic1" },
+    { id: "mic2", label: "Mic 2", kind: "mic", meterId: "mic2" },
+    { id: "mic3", label: "Mic 3", kind: "mic", meterId: "mic3" },
+    { id: "mic4", label: "Mic 4", kind: "mic", meterId: "mic4" },
+
+    { id: "cd1", label: "CD 1", kind: "stereo", meterId: "cd1" },
+    { id: "cd2", label: "CD 2", kind: "stereo", meterId: "cd2" },
+    { id: "aux", label: "AUX", kind: "stereo", meterId: "aux" },
+    { id: "bt", label: "Bluetooth", kind: "stereo", meterId: "bt" },
+    { id: "pc", label: "PC", kind: "stereo", meterId: "pc" },
+    { id: "zoom", label: "Zoom", kind: "stereo", meterId: "zoom" },
+
+    { id: "tt1", label: "Turntable 1", kind: "stereo", meterId: "tt1" },
+    { id: "tt2", label: "Turntable 2", kind: "stereo", meterId: "tt2" },
+
+    { id: "spk", label: "Speakers", kind: "monitor", meterId: "spk" },
+  ];
+
+  const meterById: Record<string, any> = {};
+  for (const m of metersB1?.meters || []) meterById[m.id] = m;
+
+  function Strip(props: { ch: typeof channels[number] }) {
+    const m = props.ch.meterId ? meterById[props.ch.meterId] : null;
+    const raw = typeof m?.raw === "number" ? m.raw : null;
+    const dBu = raw === null ? null : dBuFromRaw(raw);
+    const pct = dBu === null ? 0 : Math.max(0, Math.min(1, (dBu + 48) / 72));
+
+    return (
+      <div
+        style={{
+          width: 120,
+          minWidth: 120,
+          padding: 10,
+          borderRadius: 16,
+          background: "rgba(255,255,255,.04)",
+          border: "1px solid rgba(255,255,255,.08)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <div style={{ fontWeight: 950, lineHeight: 1.1 }}>{props.ch.label}</div>
+
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
+            {raw === null ? "—" : `${dBu!.toFixed(1)} dBu`}
+          </div>
+          <div style={{ height: 120, borderRadius: 999, background: "rgba(0,0,0,.35)", overflow: "hidden" }}>
+            <div
+              style={{
+                width: "100%",
+                height: `${pct * 100}%`,
+                marginTop: `${(1 - pct) * 100}%`,
+                background: "rgba(53,208,127,.9)",
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 10, opacity: 0.6, marginTop: 6 }}>
+            {m?.controller ? <>Ctrl <code>{String(m.controller).padStart(5, "0")}</code></> : "No meter"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            disabled
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(255,255,255,.04)",
+              color: "rgba(255,255,255,.55)",
+              fontWeight: 900,
+            }}
+            title="Mute will be enabled once we add safe DSP write controls."
+          >
+            MUTE
+          </button>
+          <button
+            disabled
+            style={{
+              width: 44,
+              padding: "8px 10px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(255,255,255,.04)",
+              color: "rgba(255,255,255,.55)",
+              fontWeight: 900,
+            }}
+            title="PFL / cue will be added later."
+          >
+            PFL
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input type="range" min={0} max={100} defaultValue={75} disabled />
+          <div style={{ fontSize: 10, opacity: 0.55 }}>Read-only (Phase 1)</div>
+        </div>
+      </div>
+    );
+  }
+
+  const dspIp = (status?.dsp?.targets || []).find((t: any) => t.id === "b1")?.ip;
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Studio B</div>
+      <div style={{ opacity: 0.7, marginBottom: 14 }}>
+        Mixer shell (read-only). Live meters appear once Studio B meter controllers are assigned in Composer.
+      </div>
+
+      {error ? (
+        <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(255,50,50,.16)" }}>
+          Status error: {error}
+        </div>
+      ) : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginBottom: 14 }}>
+        <Card title="Studio B DSP">
+          <div style={{ fontSize: 13, opacity: 0.85, lineHeight: 1.5 }}>
+            <div>Target: <strong>b1</strong> {dspIp ? <span style={{ opacity: 0.8 }}>({dspIp})</span> : null}</div>
+            <div>Meter stream: <strong>{fmtYesNo(metersB1?.connected)}</strong></div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+              Connected=Yes but blank meters is OK until audio is present and the correct controllers are mapped.
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Operator notes">
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6, opacity: 0.85 }}>
+            <li>Phase 1: verify layout + labels + meter motion</li>
+            <li>Phase 2: add “confidence monitoring” cues and talkback</li>
+            <li>Phase 3: enable safe control writes (mute/level) with guardrails</li>
+          </ul>
+        </Card>
+      </div>
+
+      <Card title="Channel strips">
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
+          {channels.filter(c => c.kind !== "monitor").map((ch) => (
+            <Strip key={ch.id} ch={ch} />
+          ))}
+
+          <div style={{ width: 1, background: "rgba(255,255,255,.12)", margin: "0 6px" }} />
+          {channels.filter(c => c.kind === "monitor").map((ch) => (
+            <Strip key={ch.id} ch={ch} />
+          ))}
+        </div>
+
+        {!metersB1?.meters?.length ? (
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+            No Studio B meters configured yet. Add entries under <code>DSP_METER_MAP_JSON</code> for target <code>b1</code>.
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  );
+}
+
 function EngineeringPage() {
   const { status, error } = useStatusPoll();
   const metersAec = useEngineeringMeters();
@@ -405,7 +616,7 @@ export default function App() {
   const page = (() => {
     if (route === "/") return <LandingPage nav={nav} />;
     if (route === "/studio-a") return <StudioPlaceholderPage title="Studio A" />;
-    if (route === "/studio-b") return <StudioPlaceholderPage title="Studio B" />;
+    if (route === "/studio-b") return <StudioBPage />;
     if (route === "/engineering") return <EngineeringPage />;
     return <LandingPage nav={nav} />;
   })();
