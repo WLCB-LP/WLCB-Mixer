@@ -397,7 +397,7 @@ function StudioBPage() {
           </div>
 
           <div
-            className={`sb-lamp sig ${isSig(raw) ? "on" : ""}`}
+            className={`sb-lamp sig ${hasSignal(raw) ? "on" : ""}`}
             title="Signal present"
             aria-label="Signal lamp"
           >
