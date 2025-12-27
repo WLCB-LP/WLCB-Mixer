@@ -17,7 +17,7 @@ VERSION="$(node -p "require('./server/package.json').version")"
 TAG="v${VERSION}"
 
 # Default commit message (override with MSG=...)
-DEFAULT_DESC="Studio B: lower console slightly (1080p sightline tuning)"
+DEFAULT_DESC="Studio B: remove URL helper footer (no-scroll operator surface)"
 COMMIT_MSG="${MSG:-Release ${VERSION}: ${DEFAULT_DESC}}"
 
 echo "=== push.sh ==="

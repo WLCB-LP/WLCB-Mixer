@@ -1,6 +1,6 @@
 {
   "name": "wlcb-mixer-server",
-  "version": "0.3.9-a.4",
+  "version": "0.3.9-a.5",
   "private": true,
   "type": "module",
   "scripts": {
