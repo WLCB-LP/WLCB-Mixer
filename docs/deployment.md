@@ -77,3 +77,7 @@ sudo bash /opt/wlcb-mixer/installer/install.sh --branch stable
 ```
 
 Later, WLCB-Mixer can add a safe auto-update mechanism gated by operator inactivity.
+
+## Engineering visibility
+
+The auto-update script writes timestamps into `/var/lib/wlcb-mixer/update_last_check_epoch` and `/var/lib/wlcb-mixer/update_last_deploy_epoch` so the Engineering page can show update activity.

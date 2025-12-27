@@ -41,3 +41,7 @@ This keeps OS, app, config, and state separated in standard Linux locations.
 ## UI navigation
 
 The UI starts on a landing page where an operator selects Studio A, Studio B, or Engineering. Navigation is currently implemented with a simple hash router (no extra dependencies).
+
+## Engineering status
+
+The Engineering page polls `GET /api/status` to display release id, uptime, WebSocket client count, and update-check/deploy timestamps.

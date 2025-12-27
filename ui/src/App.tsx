@@ -287,10 +287,56 @@ function StudioPage({
 }
 
 function EngineeringPage() {
+  const [status, setStatus] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function tick() {
+      try {
+        const r = await fetch("/api/status", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const json = await r.json();
+        if (alive) {
+          setStatus(json);
+          setError(null);
+        }
+      } catch (e: any) {
+        if (alive) setError(String(e?.message || e));
+      }
+    }
+
+    tick();
+    const t = window.setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  function fmtEpoch(epoch?: number | null) {
+    if (!epoch) return "—";
+    const d = new Date(epoch * 1000);
+    return d.toLocaleString();
+  }
+
+  function fmtAge(epoch?: number | null) {
+    if (!epoch) return "—";
+    const sec = Math.max(0, Math.floor(Date.now() / 1000 - epoch));
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    return `${hr}h ${min % 60}m ago`;
+  }
+
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ maxWidth: 980, margin: "0 auto" }}>
       <h2 style={{ margin: "10px 0 6px" }}>Engineering</h2>
-      <div style={{ opacity: 0.75, marginBottom: 16 }}>Diagnostics and monitoring will live here.</div>
+      <div style={{ opacity: 0.75, marginBottom: 16 }}>
+        System status, versioning, and operational visibility.
+      </div>
 
       <div
         style={{
@@ -300,14 +346,99 @@ function EngineeringPage() {
           boxShadow: "0 10px 20px rgba(0,0,0,.25)",
         }}
       >
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Coming soon</div>
-        <ul style={{ margin: 0, paddingLeft: 18, opacity: 0.8 }}>
-          <li>DSP connectivity status</li>
-          <li>Meter overview / confidence monitoring</li>
-          <li>Routing snapshots and presets</li>
-          <li>Operator lockouts / permissions</li>
-        </ul>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontWeight: 900 }}>System Status</div>
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            {status ? `Live • WS clients: ${status.wsClients}` : "Loading…"}
+          </div>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 10,
+              background: "#2a1a1a",
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>Error</div>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>{error}</div>
+          </div>
+        )}
+
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 12,
+          }}
+        >
+          <InfoCard
+            title="Release"
+            value={status?.releaseId || "—"}
+            hint="Short commit id from atomic release (.release_id)"
+          />
+          <InfoCard
+            title="Uptime"
+            value={status ? `${status.uptimeSec}s` : "—"}
+            hint="Server process uptime"
+          />
+          <InfoCard
+            title="WS Clients"
+            value={status ? String(status.wsClients) : "—"}
+            hint="Connected operator browsers"
+          />
+          <InfoCard
+            title="Last Operator Activity"
+            value={fmtAge(status?.lastOperatorActivityEpoch)}
+            hint={fmtEpoch(status?.lastOperatorActivityEpoch)}
+          />
+          <InfoCard
+            title="Last Update Check"
+            value={fmtAge(status?.update?.lastCheckEpoch)}
+            hint={fmtEpoch(status?.update?.lastCheckEpoch)}
+          />
+          <InfoCard
+            title="Last Update Deploy"
+            value={fmtAge(status?.update?.lastDeployEpoch)}
+            hint={fmtEpoch(status?.update?.lastDeployEpoch)}
+          />
+        </div>
+
+        <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
+          Next: add DSP connectivity and a meter overview.
+        </div>
       </div>
+    </div>
+  );
+}
+
+function InfoCard({
+  title,
+  value,
+  hint,
+}: {
+  title: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 12,
+        background: "#0f1116",
+        padding: 12,
+        border: "1px solid rgba(255,255,255,.06)",
+      }}
+      title={hint || ""}
+    >
+      <div style={{ fontSize: 12, opacity: 0.75 }}>{title}</div>
+      <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{value}</div>
+      {hint && (
+        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>{hint}</div>
+      )}
     </div>
   );
 }
