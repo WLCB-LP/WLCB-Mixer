@@ -1,0 +1,14 @@
+# =============================================================================
+# WLCB-Mixer — Auto-update (service)
+# =============================================================================
+#
+# Runs the update check-and-deploy script. This is invoked by the timer unit.
+# =============================================================================
+
+[Unit]
+Description=WLCB-Mixer Auto-Update Check
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/wlcb-mixer/bin/wlcb-mixer-update.sh

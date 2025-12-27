@@ -1,0 +1,21 @@
+# =============================================================================
+# WLCB-Mixer — Auto-update (timer)
+# =============================================================================
+#
+# Checks for updates every minute.
+# Phase 1 policy:
+#   - If origin/stable has a new commit, deploy immediately.
+#   - Idle gating will be added later.
+# =============================================================================
+
+[Unit]
+Description=WLCB-Mixer Auto-Update Timer
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
