@@ -240,151 +240,188 @@ function StudioPlaceholderPage({ title }: { title: string }) {
 function StudioBPage() {
   /**
    * =============================================================================
-   * Studio B — Broadcast-style mixer shell (Phase 1)
+   * Studio B — Broadcast console view (Design-first / Read-only)
    * =============================================================================
-   * This page is intentionally "read-only" for now:
-   *   - Faders and mutes are rendered, but disabled.
-   *   - Meters update live once Composer controller numbers are assigned and
-   *     DSP_METER_MAP_JSON is configured for targetId "b1".
+   * Goals:
+   *  - Operator confidence monitoring: big labels + tall meters + clear grouping
+   *  - No DSP writes yet: CUT/MUTE, PFL, and faders are rendered but disabled
+   *  - Meters poll /api/meters/b1 every 250ms (null / no audio is OK)
    *
-   * WHY build the UI before enabling control writes?
-   * ----------------------------------------------
-   * In broadcast, the *layout* and operator muscle memory matter. Building the UI
-   * first lets you validate ergonomics, labeling, meter ballistics, and screen
-   * density while keeping the DSP safe.
+   * Expected meter ids:
+   *   mic1..mic4, cd1, cd2, aux, bt, pc, zoom, tt1, tt2, spk
    * =============================================================================
    */
 
   const { status, error } = useStatusPoll();
 
-  // Studio B DSP target id (from DSP_TARGETS_JSON):
-  //   {"id":"b1","name":"Radius 12x8 #3 (Studio B)","ip":"10.101.2.2"}
   const [metersB1, setMetersB1] = React.useState<any>(null);
+  const [peaks, setPeaks] = React.useState<Record<string, number>>({});
 
   React.useEffect(() => {
     let alive = true;
     const t = window.setInterval(async () => {
       try {
-        const r = await fetch("/api/meters/b1");
+        const r = await fetch("/api/meters/b1", { cache: "no-store" as RequestCache });
         if (!r.ok) return;
         const j = await r.json();
         if (!alive) return;
         setMetersB1(j);
+
+        // Peak hold / decay (UI-only). Track by meter id using raw values.
+        const nowMeters: any[] = (j && j.meters) ? j.meters : [];
+        setPeaks((prev) => {
+          const next: Record<string, number> = { ...prev };
+          const decay = 0.965; // ~smooth decay across 250ms ticks
+          for (const k of Object.keys(next)) next[k] = next[k] * decay;
+
+          for (const m of nowMeters) {
+            const id = m?.id;
+            const raw = typeof m?.raw === "number" ? m.raw : null;
+            if (!id || raw === null) continue;
+            next[id] = Math.max(next[id] || 0, raw);
+          }
+          return next;
+        });
       } catch {
         // keep rendering
       }
     }, 250);
+
     return () => {
       alive = false;
       window.clearInterval(t);
     };
   }, []);
 
-  // Studio B channel plan (your current spec)
   const channels: Array<{
     id: string;
     label: string;
-    kind: "mic" | "stereo" | "monitor";
-    meterId?: string;
+    group: "MICS" | "SOURCES" | "TURNTABLES" | "MONITOR";
+    meterId: string;
   }> = [
-    { id: "mic1", label: "Mic 1", kind: "mic", meterId: "mic1" },
-    { id: "mic2", label: "Mic 2", kind: "mic", meterId: "mic2" },
-    { id: "mic3", label: "Mic 3", kind: "mic", meterId: "mic3" },
-    { id: "mic4", label: "Mic 4", kind: "mic", meterId: "mic4" },
+    { id: "mic1", label: "MIC 1", group: "MICS", meterId: "mic1" },
+    { id: "mic2", label: "MIC 2", group: "MICS", meterId: "mic2" },
+    { id: "mic3", label: "MIC 3", group: "MICS", meterId: "mic3" },
+    { id: "mic4", label: "MIC 4", group: "MICS", meterId: "mic4" },
 
-    { id: "cd1", label: "CD 1", kind: "stereo", meterId: "cd1" },
-    { id: "cd2", label: "CD 2", kind: "stereo", meterId: "cd2" },
-    { id: "aux", label: "AUX", kind: "stereo", meterId: "aux" },
-    { id: "bt", label: "Bluetooth", kind: "stereo", meterId: "bt" },
-    { id: "pc", label: "PC", kind: "stereo", meterId: "pc" },
-    { id: "zoom", label: "Zoom", kind: "stereo", meterId: "zoom" },
+    { id: "cd1", label: "CD 1", group: "SOURCES", meterId: "cd1" },
+    { id: "cd2", label: "CD 2", group: "SOURCES", meterId: "cd2" },
+    { id: "aux", label: "AUX", group: "SOURCES", meterId: "aux" },
+    { id: "bt", label: "BLUETOOTH", group: "SOURCES", meterId: "bt" },
+    { id: "pc", label: "PC", group: "SOURCES", meterId: "pc" },
+    { id: "zoom", label: "ZOOM", group: "SOURCES", meterId: "zoom" },
 
-    { id: "tt1", label: "Turntable 1", kind: "stereo", meterId: "tt1" },
-    { id: "tt2", label: "Turntable 2", kind: "stereo", meterId: "tt2" },
+    { id: "tt1", label: "TT 1", group: "TURNTABLES", meterId: "tt1" },
+    { id: "tt2", label: "TT 2", group: "TURNTABLES", meterId: "tt2" },
 
-    { id: "spk", label: "Speakers", kind: "monitor", meterId: "spk" },
+    { id: "spk", label: "SPEAKERS", group: "MONITOR", meterId: "spk" },
   ];
 
   const meterById: Record<string, any> = {};
   for (const m of metersB1?.meters || []) meterById[m.id] = m;
 
+  // Visual mapping: Symetrix raw -> dBu -> meter percent
+  function meterPctFromRaw(raw: number | null): number {
+    if (raw === null) return 0;
+    const dBu = dBuFromRaw(raw);
+    // Map -48..+24 dBu to 0..1
+    return Math.max(0, Math.min(1, (dBu + 48) / 72));
+  }
+
+  function dBuLabel(raw: number | null): string {
+    if (raw === null) return "—";
+    return `${dBuFromRaw(raw).toFixed(1)} dBu`;
+  }
+
+  // Heuristic "signal present" threshold for UI lamp
+  function hasSignal(raw: number | null): boolean {
+    if (raw === null) return false;
+    const dBu = dBuFromRaw(raw);
+    return dBu > -40;
+  }
+
+  // Heuristic "clip/over" threshold for UI lamp
+  function isHot(raw: number | null): boolean {
+    if (raw === null) return false;
+    const dBu = dBuFromRaw(raw);
+    return dBu > 18; // near top of the configured range
+  }
+
+  function GroupDivider(props: { title: string }) {
+    return (
+      <div className="sb-group-divider" aria-hidden="true">
+        <div className="sb-group-divider-line" />
+        <div className="sb-group-divider-title">{props.title}</div>
+      </div>
+    );
+  }
+
   function Strip(props: { ch: typeof channels[number] }) {
-    const m = props.ch.meterId ? meterById[props.ch.meterId] : null;
+    const m = meterById[props.ch.meterId];
     const raw = typeof m?.raw === "number" ? m.raw : null;
-    const dBu = raw === null ? null : dBuFromRaw(raw);
-    const pct = dBu === null ? 0 : Math.max(0, Math.min(1, (dBu + 48) / 72));
+    const pct = meterPctFromRaw(raw);
+
+    const peakRaw = typeof peaks?.[props.ch.meterId] === "number" ? peaks[props.ch.meterId] : null;
+    const peakPct = peakRaw === null ? null : meterPctFromRaw(peakRaw);
 
     return (
-      <div
-        style={{
-          width: 120,
-          minWidth: 120,
-          padding: 10,
-          borderRadius: 16,
-          background: "rgba(255,255,255,.04)",
-          border: "1px solid rgba(255,255,255,.08)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <div style={{ fontWeight: 950, lineHeight: 1.1 }}>{props.ch.label}</div>
-
-        <div>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
-            {raw === null ? "—" : `${dBu!.toFixed(1)} dBu`}
-          </div>
-          <div style={{ height: 120, borderRadius: 999, background: "rgba(0,0,0,.35)", overflow: "hidden" }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${pct * 100}%`,
-                marginTop: `${(1 - pct) * 100}%`,
-                background: "rgba(53,208,127,.9)",
-              }}
-            />
-          </div>
-          <div style={{ fontSize: 10, opacity: 0.6, marginTop: 6 }}>
-            {m?.controller ? <>Ctrl <code>{String(m.controller).padStart(5, "0")}</code></> : "No meter"}
+      <div className={`sb-strip ${raw === null ? "is-null" : ""} ${props.ch.group === "MONITOR" ? "is-monitor" : ""}`}>
+        <div className="sb-strip-top">
+          <div className="sb-strip-label">{props.ch.label}</div>
+          <div className="sb-strip-lamps">
+            <span className={`sb-lamp ${hasSignal(raw) ? "on" : ""}`} title="Signal present" />
+            <span className={`sb-lamp sb-lamp-hot ${isHot(raw) ? "on" : ""}`} title="Hot / near clip" />
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            disabled
-            style={{
-              flex: 1,
-              padding: "8px 10px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,.14)",
-              background: "rgba(255,255,255,.04)",
-              color: "rgba(255,255,255,.55)",
-              fontWeight: 900,
-            }}
-            title="Mute will be enabled once we add safe DSP write controls."
-          >
-            MUTE
+        <div className="sb-meter-block">
+          <div className="sb-meter-readout">{dBuLabel(raw)}</div>
+
+          <div className="sb-meter" role="img" aria-label={`${props.ch.label} meter`}>
+            <div className="sb-meter-bg" />
+            <div className="sb-meter-fill" style={{ height: `${pct * 100}%` }} />
+            {peakPct !== null ? (
+              <div className="sb-meter-peak" style={{ bottom: `${peakPct * 100}%` }} />
+            ) : null}
+            <div className="sb-meter-ticks" />
+          </div>
+
+          <div className="sb-meter-meta">
+            {m?.controller ? (
+              <>
+                Ctrl <code>{String(m.controller).padStart(5, "0")}</code>
+              </>
+            ) : (
+              <span style={{ opacity: 0.75 }}>No meter</span>
+            )}
+          </div>
+        </div>
+
+        <div className="sb-buttons">
+          <button className="sb-btn sb-btn-cut" disabled title="CUT/MUTE will be enabled in a later phase.">
+            CUT / MUTE
           </button>
-          <button
-            disabled
-            style={{
-              width: 44,
-              padding: "8px 10px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,.14)",
-              background: "rgba(255,255,255,.04)",
-              color: "rgba(255,255,255,.55)",
-              fontWeight: 900,
-            }}
-            title="PFL / cue will be added later."
-          >
+          <button className="sb-btn sb-btn-pfl" disabled title="PFL will be enabled in a later phase.">
             PFL
           </button>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <input type="range" min={0} max={100} defaultValue={75} disabled />
-          <div style={{ fontSize: 10, opacity: 0.55 }}>Read-only (Phase 1)</div>
+        <div className="sb-fader-block" aria-hidden="true">
+          <div className="sb-fader-scale">
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">0</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-5</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-10</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-20</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-30</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-40</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-50</span></div>
+            <div className="sb-mark"><span className="sb-mark-line" /><span className="sb-mark-text">-60</span></div>
+          </div>
+
+          <div className="sb-fader-slot">
+            <input className="sb-fader" type="range" min={0} max={100} defaultValue={72} disabled />
+            <div className="sb-fader-note">Read-only</div>
+          </div>
         </div>
       </div>
     );
@@ -392,53 +429,67 @@ function StudioBPage() {
 
   const dspIp = (status?.dsp?.targets || []).find((t: any) => t.id === "b1")?.ip;
 
+  // Render: Single-row console with group dividers (still one row)
+  const mics = channels.filter((c) => c.group === "MICS");
+  const sources = channels.filter((c) => c.group === "SOURCES");
+  const tts = channels.filter((c) => c.group === "TURNTABLES");
+  const monitor = channels.filter((c) => c.group === "MONITOR");
+
   return (
-    <div>
-      <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Studio B</div>
-      <div style={{ opacity: 0.7, marginBottom: 14 }}>
-        Mixer shell (read-only). Live meters appear once Studio B meter controllers are assigned in Composer.
+    <div className="studio-b">
+      <div className="studio-b-head">
+        <div className="studio-b-title">Studio B</div>
+        <div className="studio-b-sub">
+          Broadcast console view • Confidence monitoring • Controls disabled
+        </div>
       </div>
 
-      {error ? (
-        <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(255,50,50,.16)" }}>
-          Status error: {error}
-        </div>
-      ) : null}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginBottom: 14 }}>
-        <Card title="Studio B DSP">
-          <div style={{ fontSize: 13, opacity: 0.85, lineHeight: 1.5 }}>
-            <div>Target: <strong>b1</strong> {dspIp ? <span style={{ opacity: 0.8 }}>({dspIp})</span> : null}</div>
-            <div>Meter stream: <strong>{fmtYesNo(metersB1?.connected)}</strong></div>
-            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-              Connected=Yes but blank meters is OK until audio is present and the correct controllers are mapped.
+      <div className="studio-b-info">
+        <Card
+          title="DSP connectivity"
+          right={
+            <span style={{ fontSize: 12, opacity: 0.75 }}>
+              Target: <code>b1</code> {dspIp ? <>({dspIp})</> : null}
+            </span>
+          }
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ minWidth: 220 }}>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Status</div>
+              <div style={{ fontWeight: 850 }}>{error ? "Offline / error" : "Online"}</div>
+            </div>
+            <div style={{ minWidth: 220 }}>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Meters</div>
+              <div style={{ fontWeight: 850 }}>{metersB1?.meters?.length ? `${metersB1.meters.length} active` : "Not configured"}</div>
+            </div>
+            <div style={{ minWidth: 260 }}>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Mode</div>
+              <div style={{ fontWeight: 850 }}>Read-only (design-first)</div>
             </div>
           </div>
         </Card>
 
-        <Card title="Operator notes">
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6, opacity: 0.85 }}>
-            <li>Phase 1: verify layout + labels + meter motion</li>
-            <li>Phase 2: add “confidence monitoring” cues and talkback</li>
-            <li>Phase 3: enable safe control writes (mute/level) with guardrails</li>
-          </ul>
+        <Card title="Operator intent">
+          <div style={{ lineHeight: 1.55, opacity: 0.9 }}>
+            This page is built for <b>confidence monitoring</b>: clear labels, tall meters, and familiar console ergonomics.
+            When Studio B comes online, you’ll be able to confirm “is it there / is it hot / is it muted” at a glance.
+          </div>
         </Card>
       </div>
 
-      <Card title="Channel strips">
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
-          {channels.filter(c => c.kind !== "monitor").map((ch) => (
-            <Strip key={ch.id} ch={ch} />
-          ))}
-
-          <div style={{ width: 1, background: "rgba(255,255,255,.12)", margin: "0 6px" }} />
-          {channels.filter(c => c.kind === "monitor").map((ch) => (
-            <Strip key={ch.id} ch={ch} />
-          ))}
+      <Card title="Studio B console (single row)">
+        <div className="sb-console" role="region" aria-label="Studio B console">
+          {mics.map((ch) => <Strip key={ch.id} ch={ch} />)}
+          <GroupDivider title="SOURCES" />
+          {sources.map((ch) => <Strip key={ch.id} ch={ch} />)}
+          <GroupDivider title="TURNTABLES" />
+          {tts.map((ch) => <Strip key={ch.id} ch={ch} />)}
+          <GroupDivider title="MONITOR" />
+          {monitor.map((ch) => <Strip key={ch.id} ch={ch} />)}
         </div>
 
         {!metersB1?.meters?.length ? (
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
             No Studio B meters configured yet. Add entries under <code>DSP_METER_MAP_JSON</code> for target <code>b1</code>.
           </div>
         ) : null}
