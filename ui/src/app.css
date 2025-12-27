@@ -381,3 +381,35 @@ a { color: inherit; }
 .studio-b-statusbar summary { cursor: pointer; opacity: 0.85; }
 .studio-b-statusbar details[open] { width: 100%; margin-left: 0; }
 .studio-b-statusbar .muted { opacity: 0.75; }
+
+/* Studio B layout helpers (no-scroll console) */
+.studio-b {
+  padding: 14px 14px 18px;
+  max-width: 1920px;
+  margin: 0 auto;
+}
+
+.studio-b-consoleArea { margin-top: 10px; }
+
+.studio-b-nullhint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.04);
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* Details block in status bar */
+.studio-b-about summary { list-style: none; }
+.studio-b-about summary::-webkit-details-marker { display: none; }
+.studio-b-about-body {
+  margin-top: 8px;
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+/* Divider compact */
+.sb-divider { width: 10px; }
+.sb-divider-title { font-size: 10px; letter-spacing: 0.22em; }
