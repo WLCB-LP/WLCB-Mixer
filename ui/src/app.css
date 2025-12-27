@@ -27,15 +27,17 @@ a { color: inherit; }
 .studio-b .studio-b-head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 4px;
+  margin-bottom: 8px;
 }
 
+
 .studio-b .studio-b-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 950;
   letter-spacing: 0.2px;
 }
+
 
 .studio-b .studio-b-sub {
   opacity: 0.75;
@@ -53,24 +55,24 @@ a { color: inherit; }
 .sb-console {
   display: flex;
   align-items: stretch;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scroll-snap-type: x proximity;
+  gap: 8px;
+  overflow-x: hidden;
+  padding-bottom: 0;
 }
 
+
 .sb-strip {
-  scroll-snap-align: start;
-  width: 156px;
+  
+  width: 128px;
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,0.10);
   background: radial-gradient(110% 110% at 30% 20%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 45%, rgba(0,0,0,0.10) 100%);
   box-shadow: 0 10px 22px rgba(0,0,0,0.25);
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 470px;
+  min-height: 440px;
 }
 
 .sb-strip.is-monitor {
@@ -326,8 +328,8 @@ a { color: inherit; }
 
 /* Group divider (within one row) */
 .sb-group-divider {
-  width: 28px;
-  min-width: 28px;
+  width: 22px;
+  min-width: 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -336,11 +338,13 @@ a { color: inherit; }
   opacity: 0.95;
 }
 
+
 .sb-group-divider-line {
   width: 1px;
-  height: 360px;
+  height: 320px;
   background: rgba(255,255,255,0.14);
 }
+
 
 .sb-group-divider-title {
   writing-mode: vertical-rl;
@@ -356,3 +360,24 @@ a { color: inherit; }
 .sb-console::-webkit-scrollbar { height: 10px; }
 .sb-console::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 999px; }
 .sb-console::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); border-radius: 999px; }
+
+
+/* Studio B 1920x1080 optimization (no scrolling) */
+.studio-b-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+  margin-bottom: 10px;
+  font-size: 12px;
+  opacity: 0.92;
+}
+.studio-b-statusbar code { opacity: 0.95; }
+.studio-b-statusbar details { margin-left: auto; }
+.studio-b-statusbar summary { cursor: pointer; opacity: 0.85; }
+.studio-b-statusbar details[open] { width: 100%; margin-left: 0; }
+.studio-b-statusbar .muted { opacity: 0.75; }

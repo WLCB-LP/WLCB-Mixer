@@ -444,19 +444,25 @@ function StudioBPage() {
         </div>
       </div>
 
-      <div className="studio-b-info">
-        <Card
-          title="DSP connectivity"
-          right={
-            <span style={{ fontSize: 12, opacity: 0.75 }}>
-              Target: <code>b1</code> {dspIp ? <>({dspIp})</> : null}
-            </span>
-          }
-        >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <div style={{ minWidth: 220 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Status</div>
-              <div style={{ fontWeight: 850 }}>{error ? "Offline / error" : "Online"}</div>
+      <div className="studio-b-statusbar">
+        <span>
+          Target: <code>b1</code> {dspIp ? <>({dspIp})</> : null}
+        </span>
+        <span className="muted">
+          • Updates: <code>/api/meters/b1</code> every 250ms
+        </span>
+        <span className="muted">
+          • Meters: {metersB1?.meters?.length ? <b>{metersB1.meters.length}</b> : <b>none</b>}
+        </span>
+        <details>
+          <summary>About this page</summary>
+          <div style={{ marginTop: 8, lineHeight: 1.4, opacity: 0.9 }}>
+            Built for <b>confidence monitoring</b>: clear labels, tall meters, and familiar console ergonomics. Controls are
+            intentionally disabled until DSP write controls are implemented.
+          </div>
+        </details>
+      </div>
+<div style={{ fontWeight: 850 }}>{error ? "Offline / error" : "Online"}</div>
             </div>
             <div style={{ minWidth: 220 }}>
               <div style={{ fontSize: 12, opacity: 0.7 }}>Meters</div>
@@ -477,7 +483,7 @@ function StudioBPage() {
         </Card>
       </div>
 
-      <Card title="Studio B console (single row)">
+      <Card title="Studio B console">
         <div className="sb-console" role="region" aria-label="Studio B console">
           {mics.map((ch) => <Strip key={ch.id} ch={ch} />)}
           <GroupDivider title="SOURCES" />
