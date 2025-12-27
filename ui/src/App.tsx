@@ -374,61 +374,68 @@ function StudioBPage() {
     const fill = fillFromRaw(raw);
     const peakFill = peakRaw === null ? null : fillFromRaw(peakRaw);
 
+    // Disabled fader for design-first. Keep a fixed position for now.
+    const faderValue = 72; // 0..100
+
     return (
       <div className="sb-strip" data-id={ch.id}>
-        <div className="sb-strip-label">{ch.label}</div>
+        <div className="sb-track" aria-label={`${ch.label} fader`}>
+          <div className="sb-meter-bg" />
+          <div className="sb-meter-fill" style={{ height: `${Math.round(fill * 100)}%` }} />
+          {peakFill !== null ? (
+            <div className="sb-meter-peak" style={{ bottom: `${Math.round(peakFill * 100)}%` }} />
+          ) : null}
 
-        <div className="sb-meter-wrap">
-          <div className="sb-meter">
-            <div className="sb-meter-bg" />
-            <div className="sb-meter-fill" style={{ height: `${Math.round(fill * 100)}%` }} />
-            {peakFill !== null ? (
-              <div className="sb-meter-peak" style={{ bottom: `${Math.round(peakFill * 100)}%` }} />
-            ) : null}
-            <div className="sb-meter-ticks" />
+          <div className="sb-track-ticks" aria-hidden="true">
+            <div className="sb-tick">0</div>
+            <div className="sb-tick">-10</div>
+            <div className="sb-tick">-20</div>
+            <div className="sb-tick">-30</div>
+            <div className="sb-tick">-40</div>
+            <div className="sb-tick">-50</div>
+            <div className="sb-tick">-60</div>
           </div>
 
-          <div className="sb-meter-side">
-            <div className={`sb-lamp ${hasSignal(raw) ? "on" : ""}`} title="Signal present">
-              SIG
-            </div>
-            <div className={`sb-lamp hot ${isHot(raw) ? "on" : ""}`} title="Hot level">
-              HOT
-            </div>
-            <div className="sb-readout">{dBuLabel(raw)}</div>
+          <div
+            className={`sb-lamp sig ${isSig(raw) ? "on" : ""}`}
+            title="Signal present"
+            aria-label="Signal lamp"
+          >
+            SIG
           </div>
+          <div className={`sb-lamp hot ${isHot(raw) ? "on" : ""}`} title="Hot level" aria-label="Hot lamp">
+            HOT
+          </div>
+
+          <div className="sb-fader-rail" aria-hidden="true" />
+          <div className="sb-fader-centerline" aria-hidden="true" />
+          <div className="sb-fader-cap" style={{ bottom: `calc(${faderValue}% - 16px)` }} aria-hidden="true" />
+
+          {/* Keep the real control in place for later (disabled for now) */}
+          <input className="sb-fader-input" type="range" min={0} max={100} value={faderValue} disabled readOnly />
+
+          <div className="sb-readout">{dBuLabel(raw)}</div>
         </div>
 
-        <div className="sb-btn-row">
-          <button className="sb-btn cut" disabled>
-            CUT
-          </button>
-          <button className="sb-btn pfl" disabled>
-            PFL
-          </button>
-        </div>
-
-        <div className="sb-fader-wrap">
-          <div className="sb-fader-scale">
-            <div className="sb-scale-mark">0</div>
-            <div className="sb-scale-mark">-10</div>
-            <div className="sb-scale-mark">-20</div>
-            <div className="sb-scale-mark">-30</div>
-            <div className="sb-scale-mark">-40</div>
-            <div className="sb-scale-mark">-50</div>
-            <div className="sb-scale-mark">-60</div>
+        <div className="sb-under">
+          <div className="sb-btn-row">
+            <button className="sb-btn cut" disabled title="Mute (disabled)">
+              MUTE
+            </button>
+            <button className="sb-btn pfl" disabled title="PFL (disabled)">
+              PFL
+            </button>
           </div>
 
-          <div className="sb-fader-slot">
-            <input className="sb-fader" type="range" min={0} max={100} defaultValue={72} disabled />
-            <div className="sb-fader-note">Read-only</div>
-          </div>
+          <div className="sb-strip-name">{ch.label}</div>
+          <div className="sb-strip-note">Read-only</div>
         </div>
       </div>
     );
   }
 
-  const dspIp = (status?.dsp?.targets || []).find((t: any) => t.id === "b1")?.ip;
+  const dspIp
+ = (status?.dsp?.targets || []).find((t: any) => t.id === "b1")?.ip;
 
   const mics = channels.filter((c) => c.group === "MICS");
   const sources = channels.filter((c) => c.group === "SOURCES");
@@ -465,7 +472,15 @@ function StudioBPage() {
         </details>
       </div>
 
+
+      {!metersB1?.meters?.length ? (
+        <div className="studio-b-nullhint">
+          No active meters reported yet. This is normal until audio is routed to these meters.
+        </div>
+      ) : null}
+
       <div className="studio-b-consoleArea">
+
         <div className="sb-console" role="region" aria-label="Studio B console">
           {mics.map((ch) => (
             <Strip key={ch.id} ch={ch} />
@@ -484,11 +499,6 @@ function StudioBPage() {
           ))}
         </div>
 
-        {!metersB1?.meters?.length ? (
-          <div className="studio-b-nullhint">
-            No active meters reported yet. This is normal until audio is routed to these meters.
-          </div>
-        ) : null}
       </div>
     </div>
   );

@@ -1,47 +1,74 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION_TAG="v0.3.8"
 SERVICE="wlcb-mixer-update.service"
 
-# Refuse to run if there are uncommitted changes (prevents accidental commits)
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "ERROR: Working tree is not clean. Commit/stash your changes first."
-  git status --porcelain
-  exit 1
+# Ultra-lazy release helper:
+# - cleans known junk
+# - stages everything (tracked + untracked)
+# - bumps versions (server/ui) if VERSION env is set
+# - commits if there is anything to commit
+# - pushes main, fast-forwards stable, tags vX.Y.Z (derived from package.json)
+# - triggers the updater service
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Known junk that should never block releases
+rm -f patches/ui-meters-fix.patch 2>/dev/null || true
+
+# Optional: set VERSION explicitly, e.g. VERSION=0.3.9 ./push.sh
+if [[ "${VERSION:-}" != "" ]]; then
+  node - <<'NODE'
+const fs = require("fs");
+const v = process.env.VERSION;
+for (const p of ["server/package.json","ui/package.json"]) {
+  const j = JSON.parse(fs.readFileSync(p, "utf8"));
+  j.version = v;
+  fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
+}
+NODE
 fi
 
-echo "--- [1/7] Ensure main is up to date ---"
+# Derive version/tag from server/package.json (source of truth)
+VERSION_FROM_PKG="$(node -p "require('./server/package.json').version")"
+TAG="v${VERSION_FROM_PKG}"
+
+echo "--- [0] Version: ${VERSION_FROM_PKG} (tag ${TAG}) ---"
+
+echo "--- [1] Checkout + update main ---"
 git checkout main
 git pull origin main
 
-echo "--- [2/7] Stage release changes ---"
-git add ui/src/App.tsx ui/src/app.css ui/package.json server/package.json push.sh
+echo "--- [2] Stage everything (lazy mode) ---"
+git add -A
 
-echo "--- [3/7] Commit on main ---"
-git commit -m "Release ${VERSION_TAG}: Studio B console (1920 no-scroll) + UI build fix" || {
-  echo "Nothing to commit (working tree clean after add)."
-}
+if git diff --cached --quiet; then
+  echo "Nothing to commit."
+else
+  MSG="${MSG:-Release ${VERSION_FROM_PKG}}"
+  echo "--- [3] Commit: ${MSG} ---"
+  git commit -m "${MSG}"
+fi
 
-echo "--- [4/7] Push main ---"
+echo "--- [4] Push main ---"
 git push origin main
 
-echo "--- [5/7] Fast-forward stable to main ---"
+echo "--- [5] Fast-forward stable to main ---"
 git checkout stable
 git pull origin stable
 git merge --ff-only main
 git push origin stable
 
-echo "--- [6/7] Tag release ---"
-if git rev-parse "${VERSION_TAG}" >/dev/null 2>&1; then
-  echo "Tag ${VERSION_TAG} already exists locally."
+echo "--- [6] Tag (if missing) ---"
+if git rev-parse "${TAG}" >/dev/null 2>&1; then
+  echo "Tag ${TAG} already exists."
 else
-  git tag -a "${VERSION_TAG}" -m "WLCB-Mixer ${VERSION_TAG}"
+  git tag -a "${TAG}" -m "WLCB-Mixer ${VERSION_FROM_PKG}"
 fi
-git push origin "${VERSION_TAG}" || echo "Tag push skipped/failed (tag may already exist on origin)."
+git push origin "${TAG}" || true
 
-echo "--- [7/7] Trigger updater on this host ---"
+echo "--- [7] Trigger updater ---"
 sudo systemctl start "${SERVICE}"
-sudo systemctl --no-pager -l status "${SERVICE}" || true
+sudo systemctl status "${SERVICE}" --no-pager -l || true
 
 echo "Done."
