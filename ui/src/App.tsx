@@ -287,8 +287,9 @@ function StudioPage({
 }
 
 function EngineeringPage() {
-  const [status, setStatus] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = React.useState<any>(null);
+  const [metersAec, setMetersAec] = React.useState<any>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -309,9 +310,19 @@ function EngineeringPage() {
 
     tick();
     const t = window.setInterval(tick, 2000);
+
+    const tm = window.setInterval(async () => {
+      try {
+        const r = await fetch("/api/meters/aec");
+        if (!r.ok) return;
+        const j = await r.json();
+        setMetersAec(j);
+      } catch {}
+    }, 250);
+
     return () => {
-      alive = false;
       window.clearInterval(t);
+      window.clearInterval(tm);
     };
   }, []);
 
