@@ -29,3 +29,7 @@ Auto-update timer (every minute):
 systemctl status wlcb-mixer-update.timer
 journalctl -u wlcb-mixer-update.service -n 50 --no-pager
 ```
+
+
+### Engineering meters (Phase 1)
+Set `DSP_METER_MAP_JSON` in `/etc/wlcb-mixer/config.env` with Symetrix controller numbers for meter objects, then view `/#/engineering`.

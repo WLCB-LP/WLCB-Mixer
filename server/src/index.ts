@@ -14,6 +14,7 @@ import fs from "node:fs";
 import net from "node:net";
 import { execFile } from "node:child_process";
 import { WebSocketServer } from "ws";
+import { SymetrixMeterClient, type MeterDef } from "./symetrix";
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -47,6 +48,46 @@ function loadDspTargets(): DspTarget[] {
     return [];
   }
 }
+
+
+/**
+ * Meter map config
+ * -----------------------------------------------------------------------------
+ * DSP_METER_MAP_JSON example:
+ * {
+ *   "aec": [
+ *     {"id":"vu_program","label":"Program","controller":9001},
+ *     {"id":"vu_rec","label":"Record","controller":9002}
+ *   ]
+ * }
+ *
+ * Keys must match DSP target IDs from DSP_TARGETS_JSON.
+ */
+function loadMeterMap(): Record<string, MeterDef[]> {
+  const raw = process.env.DSP_METER_MAP_JSON;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, MeterDef[]> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (!Array.isArray(v)) continue;
+      out[k] = v
+        .map((m: any) => ({
+          id: String((m as any)?.id ?? ""),
+          label: String((m as any)?.label ?? ""),
+          controller: Number((m as any)?.controller ?? NaN),
+        }))
+        .filter((m) => m.id && m.label && Number.isFinite(m.controller));
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const DSP_METER_PUSH_INTERVAL_MS = Number(process.env.DSP_METER_PUSH_INTERVAL_MS || 200);
+const DSP_METER_PUSH_THRESHOLD = Number(process.env.DSP_METER_PUSH_THRESHOLD || 50);
 
 const DSP_PROBE_PORT = Number(process.env.DSP_PROBE_PORT || 80);
 
@@ -195,6 +236,37 @@ setInterval(() => {
 }, 5000);
 probeAll().catch(() => {});
 
+
+// -----------------------------------------------------------------------------
+// Symetrix meter clients (Phase 1)
+// -----------------------------------------------------------------------------
+// We start with the Engineering DSP only (target id: "aec").
+//
+// Later we can enable studio DSPs in the same pattern.
+const meterClients: Record<string, SymetrixMeterClient> = {};
+
+(function startMeterClients() {
+  const targets = loadDspTargets();
+  const meterMap = loadMeterMap();
+
+  for (const t of targets) {
+    const meters = meterMap[t.id] || [];
+    if (!meters.length) continue;
+    if (t.id !== "aec") continue;
+
+    const client = new SymetrixMeterClient({
+      host: t.ip,
+      port: 48631,
+      meters,
+      pushIntervalMs: DSP_METER_PUSH_INTERVAL_MS,
+      pushThresholdMeter: DSP_METER_PUSH_THRESHOLD,
+    });
+
+    client.start();
+    meterClients[t.id] = client;
+  }
+})();
+
 const app = express();
 const server = http.createServer(app);
 const bootTimeMs = Date.now();
@@ -218,8 +290,25 @@ app.get("/api/status", (_req, res) => {
       probePort: DSP_PROBE_PORT,
       targets: Object.values(dspStatus),
     },
+    meters: {
+      pushIntervalMs: DSP_METER_PUSH_INTERVAL_MS,
+      pushThreshold: DSP_METER_PUSH_THRESHOLD,
+      targets: Object.keys(meterClients).map((id) => ({
+        id,
+        connected: meterClients[id].snapshot().connected,
+        meterCount: meterClients[id].snapshot().meters.length,
+      })),
+    },
   });
 });
+app.get("/api/meters/:targetId", (req, res) => {
+  const { targetId } = req.params;
+  const c = meterClients[targetId];
+  if (!c) return res.status(404).json({ error: "No meter client configured for targetId." });
+  return res.json({ targetId, ...c.snapshot() });
+});
+
+
 
 const publicDir = path.resolve("./public");
 if (fs.existsSync(publicDir)) {

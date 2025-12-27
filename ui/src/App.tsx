@@ -408,6 +408,41 @@ function EngineeringPage() {
         </div>
 
         <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>Engineering DSP Meters</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+            Phase 1: read-only meters via Symetrix push (TCP 48631).
+          </div>
+
+          {metersAec?.meters?.length ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 18 }}>
+              {metersAec.meters.map((m: any) => {
+                const raw = typeof m.raw === 'number' ? m.raw : null;
+                const dBu = raw === null ? null : dBuFromRaw(raw);
+                const pct = dBu === null ? 0 : Math.max(0, Math.min(1, (dBu + 48) / 72));
+                return (
+                  <div key={m.id} style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <div style={{ fontWeight: 900 }}>{m.label}</div>
+                      <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, opacity: 0.85 }}>
+                        {raw === null ? '—' : `${dBu!.toFixed(1)} dBu`}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 10, height: 12, borderRadius: 999, background: 'rgba(0,0,0,.35)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct * 100}%`, background: 'rgba(53,208,127,.9)' }} />
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.65 }}>
+                      Controller <code>{String(m.controller).padStart(5, '0')}</code> · Updated {m.lastEpoch ? fmtAge(m.lastEpoch) : '—'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ marginBottom: 18, fontSize: 12, opacity: 0.65 }}>
+              No Engineering meters configured yet. Set <code>DSP_METER_MAP_JSON</code> in <code>/etc/wlcb-mixer/config.env</code>.
+            </div>
+          )}
+
           <div style={{ fontWeight: 900, marginBottom: 8 }}>DSP Targets (reachability)</div>
           <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
             Phase 0: network reachability only (no control yet). Probe port:{" "}

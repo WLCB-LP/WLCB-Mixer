@@ -49,3 +49,8 @@ The Engineering page polls `GET /api/status` to display release id, uptime, WebS
 ## DSP targets (Phase 0)
 
 Configure DSP devices in `/etc/wlcb-mixer/config.env` using `DSP_TARGETS_JSON`. The server performs lightweight reachability probes (TCP connect to `DSP_PROBE_PORT`, optional ping) and exposes results via `/api/status`.
+
+
+## Engineering meters (Phase 1)
+
+WLCB-Mixer can subscribe to Symetrix meter controller numbers using the Composer Control Protocol push feature (TCP port 48631). Configure `DSP_METER_MAP_JSON` with controller numbers assigned in Composer; the server maintains a persistent TCP session and ingests `#NNNNN=VVVVV` push updates.
