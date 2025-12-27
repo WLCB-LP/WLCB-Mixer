@@ -669,6 +669,7 @@ function EngineeringPage() {
 
 export default function App() {
   const [route, nav] = useRoute();
+  const isStudioB = route === "/studio-b";
 
   const page = (() => {
     if (route === "/") return <LandingPage nav={nav} />;
@@ -682,12 +683,38 @@ export default function App() {
     <div
       style={{
         minHeight: "100vh",
+        ...(isStudioB
+          ? {
+              height: "100vh",
+              display: "flex",
+              flexDirection: "column",
+            }
+          : null),
         background: "radial-gradient(1200px 900px at 20% 0%, rgba(53,208,127,.12), rgba(0,0,0,0)), #0b0f14",
         color: "white",
       }}
     >
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      {/*
+        App shell layout:
+          - Most pages render in a centered 1200px container.
+          - Studio B is an operator surface: use full width and let the content fill the
+            remaining viewport height under the shell header (no scrolling).
+      */}
+
+      <div
+        style={
+          isStudioB
+            ? {
+                padding: 18,
+              }
+            : {
+                maxWidth: 1200,
+                margin: "0 auto",
+                padding: 18,
+              }
+        }
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isStudioB ? 10 : 16 }}>
           <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: 0.2 }}>WLCB-Mixer</div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -697,16 +724,32 @@ export default function App() {
             <Button onClick={() => nav("/engineering")} active={route === "/engineering"}>Engineering</Button>
           </div>
         </div>
+      </div>
 
+      <div
+        style={
+          isStudioB
+            ? {
+                flex: 1,
+                overflow: "hidden",
+                padding: 0,
+              }
+            : {
+                maxWidth: 1200,
+                margin: "0 auto",
+                padding: 18,
+              }
+        }
+      >
         {page}
 
-                {(route === "/" || route === "/engineering") && (
-        <div style={{ marginTop: 18, fontSize: 12, opacity: 0.55 }}>
+        {(route === "/" || route === "/engineering") && (
+          <div style={{ marginTop: 18, fontSize: 12, opacity: 0.55 }}>
                   URLs: <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/</span>{" "}
                   <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/studio-a</span>{" "}
                   <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/studio-b</span>{" "}
                   <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/engineering</span>
-                </div>
+          </div>
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 {
   "name": "wlcb-mixer-ui",
-  "version": "0.3.9-a.5",
+  "version": "0.3.9-a.6",
   "private": true,
   "type": "module",
   "scripts": {
