@@ -14,7 +14,7 @@ import fs from "node:fs";
 import net from "node:net";
 import { execFile } from "node:child_process";
 import { WebSocketServer } from "ws";
-import { SymetrixMeterClient, type MeterDef } from "./symetrix";
+import { SymetrixMeterClient, type MeterDef } from "./symetrix.js";
 
 const PORT = Number(process.env.PORT || 8080);
 
