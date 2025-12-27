@@ -1,0 +1,56 @@
+diff --git a/ui/src/App.tsx b/ui/src/App.tsx
+index 0000000..1111111 100644
+--- a/ui/src/App.tsx
++++ b/ui/src/App.tsx
+@@
++// -----------------------------------------------------------------------------
++// Meter helpers
++// -----------------------------------------------------------------------------
++// Symetrix meter scaling (Composer Control Protocol):
++// raw 0..65535 maps linearly from -48 dBu .. +24 dBu.
++// dBu = 72*(raw/65535) - 48
++function dBuFromRaw(raw: number): number {
++  return 72 * (raw / 65535) - 48;
++}
++
+@@
+ function EngineeringPage() {
+-  const [status, setStatus] = React.useState<any>(null);
++  const [status, setStatus] = React.useState<any>(null);
++  // Holds the latest meter snapshot from /api/meters/aec.
++  // IMPORTANT: This must exist so the render path never references an undefined identifier.
++  const [metersAec, setMetersAec] = React.useState<any>(null);
+   const [error, setError] = React.useState<string | null>(null);
+@@
+-      const t = window.setInterval(fetchStatus, 1000);
++      const t = window.setInterval(fetchStatus, 1000);
++
++      // Poll meters frequently (250ms). The server itself is receiving pushed updates from the DSP,
++      // so this is only UI refresh — not DSP polling.
++      const tm = window.setInterval(async () => {
++        try {
++          const r = await fetch("/api/meters/aec");
++          if (!r.ok) return;
++          const j = await r.json();
++          setMetersAec(j);
++        } catch {
++          // Swallow transient fetch errors; Engineering page should keep rendering.
++        }
++      }, 250);
+@@
+-      return () => window.clearInterval(t);
++      return () => {
++        window.clearInterval(t);
++        window.clearInterval(tm);
++      };
+     };
+   }, []);
+@@
+-          {metersAec?.meters?.length ? (
++          {metersAec?.meters?.length ? (
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 18 }}>
+               {metersAec.meters.map((m: any) => {
+                 const raw = typeof m.raw === 'number' ? m.raw : null;
+                 const dBu = raw === null ? null : dBuFromRaw(raw);
+                 const pct = dBu === null ? 0 : Math.max(0, Math.min(1, (dBu + 48) / 72));
+                 return (

@@ -1,84 +1,444 @@
 import React from "react";
 
-/*
+/**
  * =============================================================================
- * WLCB-Mixer UI — Engineering Page (meters)
+ * WLCB-Mixer UI (Full shell)
  * =============================================================================
- * Fixes:
- *  - metersAec state defined
- *  - dBuFromRaw helper defined
+ * This file restores the app shell (Landing + Studio pages + Engineering) while
+ * keeping the working Engineering DSP live meters.
+ *
+ * Routing is hash-based (no external deps) to keep installs simple:
+ *   /#/            Landing
+ *   /#/studio-a    Studio A
+ *   /#/studio-b    Studio B
+ *   /#/engineering Engineering (status + meters)
+ * =============================================================================
  */
 
-/** Convert Symetrix raw meter value (0..65535) to dBu */
-function dBuFromRaw(raw: number): number {
-  return 72 * (raw / 65535) - 48;
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+function nowEpoch(): number {
+  return Math.floor(Date.now() / 1000);
 }
 
-function fmtAge(epoch: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - epoch));
+function fmtAge(epoch: number | null | undefined): string {
+  if (!epoch) return "—";
+  const s = Math.max(0, nowEpoch() - epoch);
   if (s < 5) return "just now";
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
-  return `${h}h ago`;
+  if (h < 48) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
 }
 
-export default function EngineeringPage() {
+function fmtYesNo(v: any): string {
+  if (v === true) return "Yes";
+  if (v === false) return "No";
+  return "—";
+}
+
+/** Convert Symetrix raw meter value (0..65535) to dBu */
+function dBuFromRaw(raw: number): number {
+  // Symetrix scaling: -48 dBu .. +24 dBu
+  // dBu = 72*(raw/65535) - 48
+  return 72 * (raw / 65535) - 48;
+}
+
+// -----------------------------------------------------------------------------
+// Simple hash routing
+// -----------------------------------------------------------------------------
+
+type Route = "/" | "/studio-a" | "/studio-b" | "/engineering";
+
+function normalizeRoute(hash: string): Route {
+  const h = (hash || "").replace(/^#/, "");
+  if (h === "" || h === "/") return "/";
+  if (h.startsWith("/studio-a")) return "/studio-a";
+  if (h.startsWith("/studio-b")) return "/studio-b";
+  if (h.startsWith("/engineering")) return "/engineering";
+  return "/";
+}
+
+function useRoute(): [Route, (r: Route) => void] {
+  const [route, setRoute] = React.useState<Route>(() => normalizeRoute(window.location.hash));
+
+  React.useEffect(() => {
+    const onHash = () => setRoute(normalizeRoute(window.location.hash));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  function nav(to: Route) {
+    window.location.hash = `#${to}`;
+  }
+
+  return [route, nav];
+}
+
+// -----------------------------------------------------------------------------
+// UI building blocks (dependency-free)
+// -----------------------------------------------------------------------------
+
+function Card(props: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 16,
+        background: "rgba(255,255,255,.04)",
+        border: "1px solid rgba(255,255,255,.08)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+        <div style={{ fontWeight: 900 }}>{props.title}</div>
+        {props.right}
+      </div>
+      {props.children}
+    </div>
+  );
+}
+
+function Button(props: { onClick: () => void; children: React.ReactNode; active?: boolean }) {
+  return (
+    <button
+      onClick={props.onClick}
+      style={{
+        border: "1px solid rgba(255,255,255,.14)",
+        background: props.active ? "rgba(53,208,127,.22)" : "rgba(255,255,255,.06)",
+        color: "white",
+        padding: "10px 12px",
+        borderRadius: 12,
+        cursor: "pointer",
+        fontWeight: 800,
+      }}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Data hooks
+// -----------------------------------------------------------------------------
+
+function useStatusPoll() {
   const [status, setStatus] = React.useState<any>(null);
-  const [metersAec, setMetersAec] = React.useState<any>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const t = window.setInterval(async () => {
-      const r = await fetch("/api/status");
-      setStatus(await r.json());
-    }, 1000);
+    let alive = true;
 
+    async function fetchStatus() {
+      try {
+        const r = await fetch("/api/status");
+        if (!r.ok) throw new Error(`status http ${r.status}`);
+        const j = await r.json();
+        if (!alive) return;
+        setStatus(j);
+        setError(null);
+      } catch (e: any) {
+        if (!alive) return;
+        setError(String(e?.message || e));
+      }
+    }
+
+    fetchStatus();
+    const t = window.setInterval(fetchStatus, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, []);
+
+  return { status, error };
+}
+
+function useEngineeringMeters() {
+  const [metersAec, setMetersAec] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    let alive = true;
     const tm = window.setInterval(async () => {
       try {
         const r = await fetch("/api/meters/aec");
         if (!r.ok) return;
-        setMetersAec(await r.json());
-      } catch {}
+        const j = await r.json();
+        if (!alive) return;
+        setMetersAec(j);
+      } catch {
+        // Keep UI rendering even if a single fetch fails.
+      }
     }, 250);
 
     return () => {
-      window.clearInterval(t);
+      alive = false;
       window.clearInterval(tm);
     };
   }, []);
 
-  if (error) return <div>Error: {error}</div>;
+  return metersAec;
+}
+
+// -----------------------------------------------------------------------------
+// Pages
+// -----------------------------------------------------------------------------
+
+function LandingPage({ nav }: { nav: (r: Route) => void }) {
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Select a location</div>
+      <div style={{ opacity: 0.7, marginBottom: 18 }}>
+        Choose which studio you are operating, or open Engineering for system status and metering.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+        <Card title="Studio A">
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>On-air / production controls for Studio A.</div>
+          <Button onClick={() => nav("/studio-a")}>Open Studio A</Button>
+        </Card>
+
+        <Card title="Studio B">
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>On-air / production controls for Studio B.</div>
+          <Button onClick={() => nav("/studio-b")}>Open Studio B</Button>
+        </Card>
+
+        <Card title="Engineering">
+          <div style={{ opacity: 0.75, marginBottom: 12 }}>DSP connectivity, update status, and live output meters.</div>
+          <Button onClick={() => nav("/engineering")}>Open Engineering</Button>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function StudioPlaceholderPage({ title }: { title: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>{title}</div>
+      <div style={{ opacity: 0.7, marginBottom: 18 }}>
+        This page will become the broadcast-style mixer interface. Next phases will add faders, mutes, and confidence
+        monitoring meters.
+      </div>
+
+      <Card title="Coming next">
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6, opacity: 0.85 }}>
+          <li>Studio-specific channel strips (10–12 faders)</li>
+          <li>VU meters + peak/clip indicators</li>
+          <li>Safe control writes to DSP (mute / level) with guardrails</li>
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+function EngineeringPage() {
+  const { status, error } = useStatusPoll();
+  const metersAec = useEngineeringMeters();
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Engineering DSP Meters</h2>
-      {metersAec?.meters?.length ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-          {metersAec.meters.map((m: any) => {
-            const raw = typeof m.raw === "number" ? m.raw : null;
-            const dBu = raw === null ? null : dBuFromRaw(raw);
-            const pct = dBu === null ? 0 : Math.max(0, Math.min(1, (dBu + 48) / 72));
-            return (
-              <div key={m.id} style={{ padding: 12, background: "#222", color: "#eee", borderRadius: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong>{m.label}</strong>
-                  <span>{dBu === null ? "—" : `${dBu.toFixed(1)} dBu`}</span>
-                </div>
-                <div style={{ marginTop: 8, height: 10, background: "#000", borderRadius: 6 }}>
-                  <div style={{ width: `${pct * 100}%`, height: "100%", background: "#3dd07f" }} />
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                  Ctrl {String(m.controller).padStart(5, "0")} · {m.lastEpoch ? fmtAge(m.lastEpoch) : "—"}
-                </div>
-              </div>
-            );
-          })}
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Engineering</div>
+      <div style={{ opacity: 0.7, marginBottom: 18 }}>System health + live output metering (Engineering DSP).</div>
+
+      {error ? (
+        <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(255,50,50,.16)" }}>
+          Status error: {error}
         </div>
-      ) : (
-        <div>No meters configured.</div>
-      )}
+      ) : null}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 14,
+          marginBottom: 14,
+        }}
+      >
+        <Card title="Server">
+          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", rowGap: 6, columnGap: 10, fontSize: 13 }}>
+            <div style={{ opacity: 0.7 }}>Release</div>
+            <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{status?.releaseId ?? "—"}</div>
+
+            <div style={{ opacity: 0.7 }}>Uptime</div>
+            <div>{typeof status?.uptimeSec === "number" ? `${status.uptimeSec}s` : "—"}</div>
+
+            <div style={{ opacity: 0.7 }}>WebSocket clients</div>
+            <div>{status?.wsClients ?? "—"}</div>
+
+            <div style={{ opacity: 0.7 }}>Last operator activity</div>
+            <div>{fmtAge(status?.lastOperatorActivityEpoch)}</div>
+          </div>
+        </Card>
+
+        <Card title="Updater">
+          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", rowGap: 6, columnGap: 10, fontSize: 13 }}>
+            <div style={{ opacity: 0.7 }}>Last check</div>
+            <div>{fmtAge(status?.update?.lastCheckEpoch)}</div>
+
+            <div style={{ opacity: 0.7 }}>Last deploy</div>
+            <div>{fmtAge(status?.update?.lastDeployEpoch)}</div>
+          </div>
+        </Card>
+
+        <Card title="Meters (AEC)">
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Connected: <strong>{fmtYesNo(metersAec?.connected)}</strong>{" "}
+            {metersAec?.lastError ? <span style={{ marginLeft: 10 }}>Error: {String(metersAec.lastError)}</span> : null}
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+            Values update in the UI every 250ms. The DSP itself pushes meter changes to the server.
+          </div>
+        </Card>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+        <Card title="Engineering DSP meters">
+          {metersAec?.meters?.length ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+              {metersAec.meters.map((m: any) => {
+                const raw = typeof m.raw === "number" ? m.raw : null;
+                const dBu = raw === null ? null : dBuFromRaw(raw);
+                const pct = dBu === null ? 0 : Math.max(0, Math.min(1, (dBu + 48) / 72));
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      background: "rgba(255,255,255,.03)",
+                      border: "1px solid rgba(255,255,255,.08)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <div style={{ fontWeight: 900 }}>{m.label}</div>
+                      <div
+                        style={{
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          fontSize: 12,
+                          opacity: 0.85,
+                        }}
+                      >
+                        {raw === null ? "—" : `${dBu!.toFixed(1)} dBu`}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 10,
+                        height: 12,
+                        borderRadius: 999,
+                        background: "rgba(0,0,0,.35)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div style={{ height: "100%", width: `${pct * 100}%`, background: "rgba(53,208,127,.9)" }} />
+                    </div>
+
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.65 }}>
+                      Controller <code>{String(m.controller).padStart(5, "0")}</code> · Updated {fmtAge(m.lastEpoch)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, opacity: 0.7 }}>No meters configured (DSP_METER_MAP_JSON).</div>
+          )}
+        </Card>
+
+        <Card title="DSP targets (reachability)">
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+            Snapshot from /api/status. Helpful to verify IP reachability before enabling control writes.
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", opacity: 0.7 }}>
+                  <th style={{ padding: "8px 6px" }}>Name</th>
+                  <th style={{ padding: "8px 6px" }}>IP</th>
+                  <th style={{ padding: "8px 6px" }}>Reachable</th>
+                  <th style={{ padding: "8px 6px" }}>Last seen</th>
+                  <th style={{ padding: "8px 6px" }}>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(status?.dsp?.targets || []).map((t: any) => (
+                  <tr key={t.id} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                    <td style={{ padding: "8px 6px" }}>{t.name ?? t.id}</td>
+                    <td
+                      style={{
+                        padding: "8px 6px",
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      }}
+                    >
+                      {t.ip ?? "—"}
+                    </td>
+                    <td style={{ padding: "8px 6px" }}>{fmtYesNo(t.reachable)}</td>
+                    <td style={{ padding: "8px 6px" }}>{fmtAge(t.lastSeenEpoch)}</td>
+                    <td style={{ padding: "8px 6px", opacity: 0.8 }}>{t.error ? String(t.error) : t.disabled ? "disabled" : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {!status?.dsp?.targets?.length ? <div style={{ fontSize: 12, opacity: 0.7 }}>No DSP targets configured.</div> : null}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// App shell
+// -----------------------------------------------------------------------------
+
+export default function App() {
+  const [route, nav] = useRoute();
+
+  const page = (() => {
+    if (route === "/") return <LandingPage nav={nav} />;
+    if (route === "/studio-a") return <StudioPlaceholderPage title="Studio A" />;
+    if (route === "/studio-b") return <StudioPlaceholderPage title="Studio B" />;
+    if (route === "/engineering") return <EngineeringPage />;
+    return <LandingPage nav={nav} />;
+  })();
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "radial-gradient(1200px 900px at 20% 0%, rgba(53,208,127,.12), rgba(0,0,0,0)), #0b0f14",
+        color: "white",
+      }}
+    >
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: 0.2 }}>WLCB-Mixer</div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Button onClick={() => nav("/")} active={route === "/"}>Home</Button>
+            <Button onClick={() => nav("/studio-a")} active={route === "/studio-a"}>Studio A</Button>
+            <Button onClick={() => nav("/studio-b")} active={route === "/studio-b"}>Studio B</Button>
+            <Button onClick={() => nav("/engineering")} active={route === "/engineering"}>Engineering</Button>
+          </div>
+        </div>
+
+        {page}
+
+        <div style={{ marginTop: 18, fontSize: 12, opacity: 0.55 }}>
+          URLs: <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/</span>{" "}
+          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/studio-a</span>{" "}
+          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/studio-b</span>{" "}
+          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>/#/engineering</span>
+        </div>
+      </div>
     </div>
   );
 }
