@@ -1,74 +1,62 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVICE="wlcb-mixer-update.service"
+REMOTE="${REMOTE:-origin}"
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
 
-# Ultra-lazy release helper:
-# - cleans known junk
-# - stages everything (tracked + untracked)
-# - bumps versions (server/ui) if VERSION env is set
-# - commits if there is anything to commit
-# - pushes main, fast-forwards stable, tags vX.Y.Z (derived from package.json)
-# - triggers the updater service
+# Clean known junk
+rm -f patches/ui-meters-fix.patch || true
 
-cd "$(git rev-parse --show-toplevel)"
+# Pull latest main
+git checkout main >/dev/null
+git pull "$REMOTE" main
 
-# Known junk that should never block releases
-rm -f patches/ui-meters-fix.patch 2>/dev/null || true
+# Read version
+VERSION="$(node -p "require('./server/package.json').version")"
+TAG="v${VERSION}"
 
-# Optional: set VERSION explicitly, e.g. VERSION=0.3.9 ./push.sh
-if [[ "${VERSION:-}" != "" ]]; then
-  node - <<'NODE'
-const fs = require("fs");
-const v = process.env.VERSION;
-for (const p of ["server/package.json","ui/package.json"]) {
-  const j = JSON.parse(fs.readFileSync(p, "utf8"));
-  j.version = v;
-  fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
-}
-NODE
-fi
+# Default commit message (override with MSG=...)
+DEFAULT_DESC="Studio B: lower console slightly (1080p sightline tuning)"
+COMMIT_MSG="${MSG:-Release ${VERSION}: ${DEFAULT_DESC}}"
 
-# Derive version/tag from server/package.json (source of truth)
-VERSION_FROM_PKG="$(node -p "require('./server/package.json').version")"
-TAG="v${VERSION_FROM_PKG}"
+echo "=== push.sh ==="
+echo "Version: $VERSION"
+echo "Commit:  $COMMIT_MSG"
+echo "Tag:     $TAG"
+echo
 
-echo "--- [0] Version: ${VERSION_FROM_PKG} (tag ${TAG}) ---"
-
-echo "--- [1] Checkout + update main ---"
-git checkout main
-git pull origin main
-
-echo "--- [2] Stage everything (lazy mode) ---"
+# Stage everything (lazy mode)
 git add -A
 
+# Commit only if needed
 if git diff --cached --quiet; then
-  echo "Nothing to commit."
+  echo "No changes staged; skipping commit."
 else
-MSG="${MSG:-Release ${VERSION_FROM_PKG}: Studio B: fix Studio B render crash (SIG lamp) + 1080p layout}"
-  echo "--- [3] Commit: ${MSG} ---"
-  git commit -m "${MSG}"
+  git commit -m "$COMMIT_MSG"
 fi
 
-echo "--- [4] Push main ---"
-git push origin main
+# Push main
+git push "$REMOTE" main
 
-echo "--- [5] Fast-forward stable to main ---"
-git checkout stable
-git pull origin stable
+# Promote stable
+git checkout stable >/dev/null
+git pull "$REMOTE" stable
 git merge --ff-only main
-git push origin stable
+git push "$REMOTE" stable
 
-echo "--- [6] Tag (if missing) ---"
-if git rev-parse "${TAG}" >/dev/null 2>&1; then
-  echo "Tag ${TAG} already exists."
+# Tag if missing
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+  echo "Tag $TAG already exists."
 else
-  git tag -a "${TAG}" -m "WLCB-Mixer ${VERSION_FROM_PKG}"
+  git tag -a "$TAG" -m "WLCB-Mixer $VERSION"
 fi
-git push origin "${TAG}" || true
+git push "$REMOTE" "$TAG" || true
 
-echo "--- [7] Trigger updater ---"
-sudo systemctl start "${SERVICE}"
-sudo systemctl status "${SERVICE}" --no-pager -l || true
+# Trigger updater
+echo
+echo "Starting wlcb-mixer-update.service..."
+sudo systemctl start wlcb-mixer-update.service
 
-echo "Done."
+echo
+sudo systemctl status wlcb-mixer-update.service --no-pager -l || true

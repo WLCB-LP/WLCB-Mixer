@@ -417,9 +417,9 @@ a { color: inherit; }
 .studio-b-consoleArea {
   /* Layout hotfix (1080p): keep console VISIBLE and anchored low.
      The console gets a fixed height budget and is pushed down via margin-top:auto. */
-  margin-top: 28px;
+  margin-top: 110px;
   flex: 1 1 auto;
-  max-height: 460px;
+  max-height: 640px;
   padding-bottom: 8px;
   display: flex;
   align-items: flex-end;
