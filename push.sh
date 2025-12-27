@@ -45,7 +45,7 @@ git add -A
 if git diff --cached --quiet; then
   echo "Nothing to commit."
 else
-  MSG="${MSG:-Release ${VERSION_FROM_PKG}}"
+MSG="${MSG:-Release ${VERSION_FROM_PKG}: Studio B: layout hotfix (1080p console visible)}"
   echo "--- [3] Commit: ${MSG} ---"
   git commit -m "${MSG}"
 fi

@@ -365,6 +365,7 @@ a { color: inherit; }
 /* Studio B — console-style faders (meter behind fader), 1920x1080, no scrolling */
 .studio-b {
   height: 100vh;
+  min-height: 100vh;
   overflow: hidden;
   padding: 14px 16px 0;
   display: flex;
@@ -414,8 +415,14 @@ a { color: inherit; }
 
 /* Push the console down to leave room above for future elements */
 .studio-b-consoleArea {
+  /* Layout hotfix (1080p): keep console VISIBLE and anchored low.
+     The console gets a fixed height budget and is pushed down via margin-top:auto. */
   margin-top: auto;
+  flex: 0 0 720px;
+  max-height: 720px;
   padding-bottom: 18px;
+  display: flex;
+  align-items: flex-end;
 }
 
 .sb-console {
