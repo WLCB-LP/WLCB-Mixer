@@ -14,3 +14,8 @@ ls -1 /opt/wlcb-mixer/releases
 sudo ln -sfn /opt/wlcb-mixer/releases/<previous-id> /opt/wlcb-mixer/current
 sudo systemctl restart wlcb-mixer
 ```
+
+
+## UI assets
+
+Each release includes a built UI at `server/public` (copied from `ui/dist`) so the UI and server are always version-matched.

@@ -103,15 +103,43 @@ chown "${USER_NAME}:${USER_NAME}" "${RELEASE_DIR}/.release_id"
 
 echo "[7/9] Build (if enabled)..."
 if [[ "${NO_BUILD}" -eq 0 ]]; then
+  # ---------------------------------------------------------------------------
+  # BUILD STEP (server + UI) — and make the UI available to the server.
+  #
+  # Why the extra copy step?
+  # - The Node server serves the UI from: server/public
+  # - The React build outputs to:        ui/dist
+  # - Therefore every release must copy ui/dist -> server/public
+  #
+  # We do this inside the release directory so each release is self-contained.
+  # ---------------------------------------------------------------------------
   sudo -u "${USER_NAME}" bash -lc "
     set -e
+
+    echo '--- [build] server (TypeScript -> dist) ---'
     cd ${RELEASE_DIR}/server
     if [ -f package-lock.json ]; then npm ci; else npm install; fi
     npm run build
 
+    echo '--- [build] ui (Vite -> dist) ---'
     cd ${RELEASE_DIR}/ui
     if [ -f package-lock.json ]; then npm ci; else npm install; fi
     npm run build
+
+    echo '--- [build] publish ui -> server/public ---'
+    if [ ! -d ${RELEASE_DIR}/ui/dist ]; then
+      echo 'ERROR: UI build did not create ui/dist (cannot publish UI).'
+      exit 2
+    fi
+
+    mkdir -p ${RELEASE_DIR}/server/public
+    rsync -a --delete ${RELEASE_DIR}/ui/dist/ ${RELEASE_DIR}/server/public/
+
+    # Safety check: confirm we have an index.html to serve.
+    if [ ! -f ${RELEASE_DIR}/server/public/index.html ]; then
+      echo 'ERROR: server/public/index.html missing after publish step.'
+      exit 3
+    fi
   "
 else
   echo "Skipping build (--no-build)."
@@ -150,3 +178,5 @@ echo "✅ Installed. Active release: ${RELEASE_ID}"
 echo "URL:    http://<this-vm-lan-ip>:8080/#/"
 echo "Logs:   journalctl -u wlcb-mixer -f"
 echo "Update: systemctl status wlcb-mixer-update.timer"
+
+# (v0.2.2) UI publish is now enforced every build: ui/dist -> server/public
