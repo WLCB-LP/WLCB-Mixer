@@ -417,10 +417,10 @@ a { color: inherit; }
 .studio-b-consoleArea {
   /* Layout hotfix (1080p): keep console VISIBLE and anchored low.
      The console gets a fixed height budget and is pushed down via margin-top:auto. */
-  margin-top: auto;
-  flex: 0 0 720px;
-  max-height: 720px;
-  padding-bottom: 18px;
+  margin-top: 28px;
+  flex: 1 1 auto;
+  max-height: 460px;
+  padding-bottom: 8px;
   display: flex;
   align-items: flex-end;
 }
@@ -436,7 +436,7 @@ a { color: inherit; }
 /* Group divider: narrow but readable */
 .sb-divider {
   width: 18px;
-  height: 640px;
+  height: 560px;
   display: flex;
   flex-direction: column;
   align-items: center;
